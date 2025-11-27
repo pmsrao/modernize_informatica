@@ -20,7 +20,7 @@ cd src && python -m uvicorn api.app:app --reload --port 8000
 
 ### Step 2: Run Integration Test (Terminal 2)
 ```bash
-python test_frontend_integration.py
+python scripts/test_frontend_integration.py
 ```
 
 **Copy the File ID** from the output (looks like: `abc123-def456-...`)
@@ -104,6 +104,14 @@ S_M_LOAD_FACT (Session) - Blue
 ## API Endpoints
 
 ### Upload File
+
+**Simple workflow:**
+```bash
+curl -X POST http://localhost:8000/api/v1/upload \
+  -F "file=@samples/simple/workflow_simple.xml"
+```
+
+**Complex workflow:**
 ```bash
 curl -X POST http://localhost:8000/api/v1/upload \
   -F "file=@samples/complex/workflow_complex.xml"

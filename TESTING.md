@@ -10,7 +10,7 @@ This is the main testing documentation for the Informatica Modernization Acceler
 
 ### Run All Tests
 ```bash
-python test_samples.py
+python scripts/test_samples.py
 ```
 
 This processes all XML files in `samples/simple/` and `samples/complex/` directories.
@@ -46,8 +46,8 @@ Guide for testing the frontend lineage visualization and UI components.
 - **`samples/complex/`** - Complex workflows with multiple sessions, worklets, and transformations
 
 ### Test Scripts
-- **`test_samples.py`** - Main test script that processes all sample files
-- **`test_frontend_integration.py`** - Frontend API integration tests
+- **`scripts/test_samples.py`** - Main test script that processes all sample files
+- **`scripts/test_frontend_integration.py`** - Frontend API integration tests
 
 ### Generated Tests
 - **`generated_code/<mapping_name>/generated_tests.py`** - Auto-generated pytest test suites

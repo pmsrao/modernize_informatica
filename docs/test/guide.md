@@ -22,12 +22,12 @@ This guide provides step-by-step instructions for testing the Informatica Modern
 
 - Python 3.10+
 - Dependencies installed: `pip install -r requirements.txt`
-- Sample files in `samples/` directory
+- Sample files in `samples/simple/` and `samples/complex/` directories
 
 ### Step 1: Run Test Script
 
 ```bash
-python test_samples.py
+python scripts/test_samples.py
 ```
 
 **What it does:**
@@ -80,8 +80,11 @@ cat test_output/dag.mermaid
 # List all generated mappings
 ls -la generated_code/
 
-# View PySpark code for a mapping
+# View PySpark code for a mapping (from simple sample)
 cat generated_code/m_load_customer/pyspark_code.py
+
+# View PySpark code for complex mapping
+cat generated_code/m_complex_sales_analytics/pyspark_code.py
 ```
 
 ### Step 4: Run Generated Tests
@@ -123,7 +126,7 @@ curl http://localhost:8000/health
 
 **Terminal 2:**
 ```bash
-python test_frontend_integration.py
+python scripts/test_frontend_integration.py
 ```
 
 **What it does:**

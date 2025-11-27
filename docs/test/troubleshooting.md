@@ -148,7 +148,7 @@ python -c "from src.api import app"
 **Error:** `File not found` or upload errors
 
 **Solution:**
-- Check file exists in `samples/` directory
+- Check file exists in `samples/simple/` or `samples/complex/` directory
 - Verify file is XML format
 - Check file size (max 100MB)
 - Ensure `uploads/` directory exists and is writable

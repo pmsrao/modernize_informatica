@@ -20,8 +20,8 @@ Sample files are organized into two categories:
 
 ## ✅ Complex Test Results
 
-### 1. Workflow Parsing ✅
-**File**: `samples/complex/workflow_complex.xml`
+### 1. Simple Workflow Parsing ✅
+**File**: `samples/simple/workflow_simple.xml`
 
 **Result**: ✅ **PASSED**
 
@@ -32,19 +32,35 @@ Sample files are organized into two categories:
   - `S_M_LOAD_FACT` (Session)
 - Extracted 2 links/connectors
 
-### 2. DAG Building ✅
+### 2. Complex Workflow Parsing ✅
+**File**: `samples/complex/workflow_complex.xml`
+
+**Result**: ✅ **PASSED**
+
+- Successfully parsed workflow: `WF_ENTERPRISE_ETL_PIPELINE`
+- Extracted 9 tasks (3 load sessions, 2 worklets, 4 processing sessions)
+- Extracted 11 links/connectors (9 success paths, 2 error paths)
+- Identified 6 execution levels with parallel and sequential execution
+
+### 3. Simple DAG Building ✅
 - Successfully built DAG with 3 nodes, 2 edges
 - Topological order: `S_M_LOAD_CUSTOMER → WK_DIM_BUILD → S_M_LOAD_FACT`
 - 3 execution levels (sequential execution)
 
-### 3. DAG Visualization ✅
+### 4. Complex DAG Building ✅
+- Successfully built DAG with 9 nodes, 11 edges
+- Topological order with parallel execution paths
+- 6 execution levels (parallel and sequential)
+- Error handling paths identified
+
+### 5. DAG Visualization ✅
 Successfully generated visualizations in multiple formats:
 - DOT format (Graphviz)
 - JSON format (complete structure)
 - Mermaid format (diagram syntax)
 
-### 4. Mapping Parsing ✅
-**File**: `samples/complex/mapping_complex.xml`
+### 6. Simple Mapping Parsing ✅
+**File**: `samples/simple/mapping_simple.xml`
 
 - Successfully parsed mapping: `M_LOAD_CUSTOMER`
 - Extracted 3 transformations:
@@ -52,14 +68,30 @@ Successfully generated visualizations in multiple formats:
   - `LK_REGION` (LOOKUP)
   - `AGG_SALES` (AGGREGATOR)
 
-### 5. Code Generation ✅
+### 7. Complex Mapping Parsing ✅
+**File**: `samples/complex/mapping_complex.xml`
+
+- Successfully parsed mapping: `M_COMPLEX_SALES_ANALYTICS`
+- Extracted 3 sources, 10+ transformations:
+  - 3 Source Qualifiers
+  - 2 Expression transformations
+  - 3 Lookup transformations
+  - 1 Joiner transformation
+  - 1 Router transformation
+  - 2 Aggregator transformations
+  - 1 Rank transformation
+  - 1 Filter transformation
+  - 1 Update Strategy (SCD2)
+- 3 target tables
+
+### 8. Code Generation ✅
 Successfully generated code in multiple formats:
-- PySpark code
+- PySpark code (for both simple and complex mappings)
 - DLT pipeline
 - SQL queries
 - Mapping specification
 
-### 6. Test Generation ✅
+### 9. Test Generation ✅
 Successfully generated comprehensive test suite:
 - Unit tests for all transformations
 - Integration tests for full pipeline
@@ -69,25 +101,43 @@ Successfully generated comprehensive test suite:
 
 **Current Test Status**: 5 PASSED, 3 SKIPPED (expected - missing test data files)
 
-### 7. Worklet Parsing ✅
-- Successfully parsed worklet
+### 10. Simple Worklet Parsing ✅
+- Successfully parsed worklet: `WK_BUILD_DIMS`
 - Handled nested structure correctly
+- 2 sessions with basic connector flow
 
-### 8. Session Parsing ✅
+### 11. Complex Worklet Parsing ✅
+- Successfully parsed worklet: `WK_BUILD_ALL_DIMENSIONS`
+- Handled complex nested structure with 8 tasks
+- Parallel execution of 5 base dimensions
+- Nested worklet for time dimensions
+- Sequential validation step
+
+### 12. Simple Session Parsing ✅
 - Successfully parsed session
-- Extracted session configuration
+- Extracted basic session configuration
+
+### 13. Complex Session Parsing ✅
+- Successfully parsed complex session
+- Extracted multiple sources (3) with different configurations
+- Extracted multiple targets (3) with SCD2 configuration
+- Extracted pre/post SQL statements
+- Extracted variables and performance settings
 
 ---
 
 ## 📊 Simple Test Results
 
-Simple test files can be placed in `samples/simple/` for basic validation:
-- Basic workflow parsing
-- Simple mapping transformations
-- Single-session workflows
-- Basic DAG building
+Simple test files in `samples/simple/` provide basic validation:
+- ✅ Basic workflow parsing (3 tasks, sequential flow)
+- ✅ Simple mapping transformations (3 transformations)
+- ✅ Basic worklet structure (2 sessions)
+- ✅ Basic DAG building (3 execution levels)
+- ✅ Simple session configuration
 
-**Note**: Simple test files are optional and can be added as needed.
+**Files**: `workflow_simple.xml`, `mapping_simple.xml`, `worklet_simple.xml`, `session_simple.xml`
+
+**Use Case**: Learning, initial validation, quick smoke tests
 
 ---
 
@@ -144,12 +194,28 @@ S_M_LOAD_FACT (Session)
 
 ### Test All Files
 ```bash
-python test_samples.py
+python scripts/test_samples.py
+```
+
+This processes both `samples/simple/` and `samples/complex/` directories.
+
+### Test Specific Folder
+```bash
+# Test only simple files
+python scripts/test_samples.py --folder simple
+
+# Test only complex files
+python scripts/test_samples.py --folder complex
 ```
 
 ### Run Generated Tests
 ```bash
+# Simple mapping tests
 cd generated_code/m_load_customer
+pytest generated_tests.py -v
+
+# Complex mapping tests
+cd generated_code/m_complex_sales_analytics
 pytest generated_tests.py -v
 ```
 
