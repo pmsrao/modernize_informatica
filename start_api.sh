@@ -23,6 +23,9 @@ echo ""
 echo "Press Ctrl+C to stop the server"
 echo ""
 
-cd src
-python -m uvicorn api.app:app --reload --port 8000 --host 0.0.0.0
+# Set PYTHONPATH to include both project root (for ai_agents) and src (for other imports)
+export PYTHONPATH="${PYTHONPATH}:$(pwd):$(pwd)/src"
+
+# Run from project root
+python -m uvicorn src.api.app:app --reload --port 8000 --host 0.0.0.0
 

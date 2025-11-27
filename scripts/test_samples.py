@@ -22,7 +22,7 @@ def test_workflow_parsing():
     print("TEST 1: Workflow Parsing")
     print("="*80)
     
-    workflow_file = "samples/workflow_complex.xml"
+    workflow_file = "samples/complex/workflow_complex.xml"
     if not os.path.exists(workflow_file):
         print(f"❌ File not found: {workflow_file}")
         return None
@@ -131,7 +131,7 @@ def test_mapping_parsing():
     print("TEST 4: Mapping Parsing")
     print("="*80)
     
-    mapping_file = "samples/mapping_complex.xml"
+    mapping_file = "samples/complex/mapping_complex.xml"
     if not os.path.exists(mapping_file):
         print(f"❌ File not found: {mapping_file}")
         return None
@@ -309,7 +309,7 @@ def test_worklet_parsing():
     print("TEST 8: Worklet Parsing")
     print("="*80)
     
-    worklet_file = "samples/worklet_complex.xml"
+    worklet_file = "samples/complex/worklet_complex.xml"
     if not os.path.exists(worklet_file):
         print(f"❌ File not found: {worklet_file}")
         return None
@@ -336,7 +336,7 @@ def test_session_parsing():
     print("TEST 9: Session Parsing")
     print("="*80)
     
-    session_file = "samples/session_complex.xml"
+    session_file = "samples/complex/session_complex.xml"
     if not os.path.exists(session_file):
         print(f"❌ File not found: {session_file}")
         return None
@@ -358,7 +358,7 @@ def test_session_parsing():
 
 
 def process_all_sample_files():
-    """Process all XML files in samples directory."""
+    """Process all XML files in samples directory (including simple/ and complex/ subfolders)."""
     print("\n" + "="*80)
     print("PROCESSING ALL SAMPLE FILES")
     print("="*80)
@@ -368,8 +368,8 @@ def process_all_sample_files():
         print(f"❌ Samples directory not found: {samples_dir}")
         return
     
-    # Find all XML files
-    xml_files = list(samples_dir.glob("*.xml"))
+    # Find all XML files recursively (in samples/ and subdirectories)
+    xml_files = list(samples_dir.rglob("*.xml"))
     
     if not xml_files:
         print("❌ No XML files found in samples directory")
@@ -377,7 +377,9 @@ def process_all_sample_files():
     
     print(f"\n📁 Found {len(xml_files)} XML file(s) in samples directory:")
     for xml_file in xml_files:
-        print(f"   - {xml_file.name}")
+        # Show relative path from samples/
+        rel_path = xml_file.relative_to(samples_dir)
+        print(f"   - {rel_path}")
     
     results = {
         "workflows": [],

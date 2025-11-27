@@ -20,7 +20,6 @@ from parser import MappingParser, WorkflowParser, SessionParser, WorkletParser
 from normalizer import MappingNormalizer
 from generators import PySparkGenerator, DLTGenerator, SQLGenerator, SpecGenerator
 from dag import DAGBuilder, DAGVisualizer
-from ai_agents import AgentOrchestrator
 from versioning.version_store import VersionStore
 from config import settings
 from utils.exceptions import (
@@ -28,6 +27,18 @@ from utils.exceptions import (
     ModernizationError
 )
 from utils.logger import get_logger
+
+# Import ai_agents with fallback for path issues
+try:
+    from ai_agents import AgentOrchestrator
+except ImportError:
+    # Try importing from parent directory
+    import sys
+    from pathlib import Path
+    project_root = Path(__file__).parent.parent.parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+    from ai_agents import AgentOrchestrator
 
 logger = get_logger(__name__)
 
