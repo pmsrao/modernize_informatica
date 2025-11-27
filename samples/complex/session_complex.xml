@@ -1,8 +1,82 @@
 <?xml version="1.0"?>
-<SESSION NAME="S_M_LOAD_CUSTOMER">
-  <ATTRIBUTE NAME="Connection" VALUE="DB_CUSTOMER"/>
-  <ATTRIBUTE NAME="CommitInterval" VALUE="1000"/>
-  <SESSTRANSFORMATIONINST NAME="SQ_CUSTOMER" TRANSFORMATIONTYPE="SourceQualifier">
-    <ATTRIBUTE NAME="TracingLevel" VALUE="Verbose"/>
-  </SESSTRANSFORMATIONINST>
+<SESSION NAME="S_M_COMPLEX_SALES_ANALYTICS" MAPPINGNAME="M_COMPLEX_SALES_ANALYTICS">
+  <!-- Connection information -->
+  <ATTRIBUTE NAME="Connection" VALUE="DB_CONNECTION_SALES"/>
+  <ATTRIBUTE NAME="Database Type" VALUE="ORACLE"/>
+  <ATTRIBUTE NAME="Username" VALUE="ETL_USER"/>
+  
+  <!-- Performance settings -->
+  <ATTRIBUTE NAME="Buffer Block Size" VALUE="65536"/>
+  <ATTRIBUTE NAME="Number Of Partitions" VALUE="4"/>
+  <ATTRIBUTE NAME="Partition Type" VALUE="Auto"/>
+  <ATTRIBUTE NAME="Commit Interval" VALUE="10000"/>
+  <ATTRIBUTE NAME="Commit Type" VALUE="Target"/>
+  
+  <!-- Error handling -->
+  <ATTRIBUTE NAME="Stop On Errors" VALUE="1000"/>
+  <ATTRIBUTE NAME="Override Tracing" VALUE="Normal"/>
+  <ATTRIBUTE NAME="Write Backward Compatible Session Log File" VALUE="YES"/>
+  
+  <!-- Source configuration -->
+  <SOURCE NAME="CUSTOMER_SRC">
+    <ATTRIBUTE NAME="Database Name" VALUE="SALES_DB"/>
+    <ATTRIBUTE NAME="Table Name" VALUE="CUSTOMER_STAGING"/>
+    <ATTRIBUTE NAME="Fetch Size" VALUE="10000"/>
+  </SOURCE>
+  
+  <SOURCE NAME="ORDER_SRC">
+    <ATTRIBUTE NAME="Database Name" VALUE="SALES_DB"/>
+    <ATTRIBUTE NAME="Table Name" VALUE="ORDER_STAGING"/>
+    <ATTRIBUTE NAME="Fetch Size" VALUE="10000"/>
+    <ATTRIBUTE NAME="Partition" VALUE="ORDER_DATE"/>
+  </SOURCE>
+  
+  <SOURCE NAME="PRODUCT_SRC">
+    <ATTRIBUTE NAME="Database Name" VALUE="SALES_DB"/>
+    <ATTRIBUTE NAME="Table Name" VALUE="PRODUCT_MASTER"/>
+    <ATTRIBUTE NAME="Fetch Size" VALUE="5000"/>
+  </SOURCE>
+  
+  <!-- Target configuration -->
+  <TARGET NAME="SALES_FACT">
+    <ATTRIBUTE NAME="Database Name" VALUE="DATA_WAREHOUSE"/>
+    <ATTRIBUTE NAME="Table Name" VALUE="FACT_SALES"/>
+    <ATTRIBUTE NAME="Load Type" VALUE="Bulk"/>
+    <ATTRIBUTE NAME="Insert" VALUE="YES"/>
+    <ATTRIBUTE NAME="Update" VALUE="YES"/>
+    <ATTRIBUTE NAME="Update Strategy" VALUE="DD_UPDATE"/>
+    <ATTRIBUTE NAME="Reject File" VALUE="/data/rejects/sales_fact_reject.txt"/>
+  </TARGET>
+  
+  <TARGET NAME="CUSTOMER_DIM_SCD2">
+    <ATTRIBUTE NAME="Database Name" VALUE="DATA_WAREHOUSE"/>
+    <ATTRIBUTE NAME="Table Name" VALUE="DIM_CUSTOMER"/>
+    <ATTRIBUTE NAME="Load Type" VALUE="Normal"/>
+    <ATTRIBUTE NAME="Insert" VALUE="YES"/>
+    <ATTRIBUTE NAME="Update" VALUE="YES"/>
+    <ATTRIBUTE NAME="Update Strategy" VALUE="DD_UPDATE"/>
+    <ATTRIBUTE NAME="SCD Type" VALUE="SCD2"/>
+    <ATTRIBUTE NAME="Effective From Column" VALUE="EFFECTIVE_FROM"/>
+    <ATTRIBUTE NAME="Effective To Column" VALUE="EFFECTIVE_TO"/>
+    <ATTRIBUTE NAME="Current Flag Column" VALUE="IS_CURRENT"/>
+  </TARGET>
+  
+  <TARGET NAME="PRODUCT_PERFORMANCE_SUMMARY">
+    <ATTRIBUTE NAME="Database Name" VALUE="DATA_WAREHOUSE"/>
+    <ATTRIBUTE NAME="Table Name" VALUE="SUMMARY_PRODUCT_PERFORMANCE"/>
+    <ATTRIBUTE NAME="Load Type" VALUE="Bulk"/>
+    <ATTRIBUTE NAME="Insert" VALUE="YES"/>
+    <ATTRIBUTE NAME="Truncate Target Table" VALUE="YES"/>
+  </TARGET>
+  
+  <!-- Pre-session SQL -->
+  <ATTRIBUTE NAME="Pre SQL" VALUE="BEGIN DELETE FROM FACT_SALES WHERE LOAD_DATE = TRUNC(SYSDATE); COMMIT; END;"/>
+  
+  <!-- Post-session SQL -->
+  <ATTRIBUTE NAME="Post SQL" VALUE="BEGIN UPDATE FACT_SALES SET LAST_UPDATED = SYSDATE WHERE LOAD_DATE = TRUNC(SYSDATE); COMMIT; END;"/>
+  
+  <!-- Variable configuration -->
+  <VARIABLE NAME="$$BATCH_DATE" VALUE="2024-01-15"/>
+  <VARIABLE NAME="$$ENVIRONMENT" VALUE="PRODUCTION"/>
+  <VARIABLE NAME="$$COMMIT_SIZE" VALUE="10000"/>
 </SESSION>

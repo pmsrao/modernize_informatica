@@ -1,12 +1,149 @@
-
 {
+  "workflow_name": "WF_ENTERPRISE_ETL_PIPELINE",
   "nodes": [
-    {"id": "S_CUSTOMER", "type": "session"},
-    {"id": "WK_DIM", "type": "worklet"},
-    {"id": "S_FACT", "type": "session"}
+    {
+      "id": "S_M_LOAD_CUSTOMERS",
+      "name": "S_M_LOAD_CUSTOMERS",
+      "type": "SESSION",
+      "metadata": {
+        "mapping": "M_LOAD_CUSTOMERS",
+        "enabled": true
+      }
+    },
+    {
+      "id": "S_M_LOAD_PRODUCTS",
+      "name": "S_M_LOAD_PRODUCTS",
+      "type": "SESSION",
+      "metadata": {
+        "mapping": "M_LOAD_PRODUCTS"
+      }
+    },
+    {
+      "id": "S_M_LOAD_ORDERS",
+      "name": "S_M_LOAD_ORDERS",
+      "type": "SESSION",
+      "metadata": {
+        "mapping": "M_LOAD_ORDERS"
+      }
+    },
+    {
+      "id": "WK_DIMENSIONS_BUILD",
+      "name": "WK_DIMENSIONS_BUILD",
+      "type": "WORKLET",
+      "metadata": {
+        "worklet_name": "WK_BUILD_ALL_DIMENSIONS",
+        "nested_tasks": 8
+      }
+    },
+    {
+      "id": "WK_FACT_PROCESSING",
+      "name": "WK_FACT_PROCESSING",
+      "type": "WORKLET",
+      "metadata": {
+        "worklet_name": "WK_PROCESS_FACTS",
+        "nested_tasks": 5
+      }
+    },
+    {
+      "id": "S_M_AGGREGATE_SALES",
+      "name": "S_M_AGGREGATE_SALES",
+      "type": "SESSION",
+      "metadata": {
+        "mapping": "M_AGGREGATE_SALES"
+      }
+    },
+    {
+      "id": "S_M_AGGREGATE_INVENTORY",
+      "name": "S_M_AGGREGATE_INVENTORY",
+      "type": "SESSION",
+      "metadata": {
+        "mapping": "M_AGGREGATE_INVENTORY"
+      }
+    },
+    {
+      "id": "S_M_DATA_QUALITY_CHECK",
+      "name": "S_M_DATA_QUALITY_CHECK",
+      "type": "SESSION",
+      "metadata": {
+        "mapping": "M_DATA_QUALITY_VALIDATION"
+      }
+    },
+    {
+      "id": "S_M_RECONCILE_TOTALS",
+      "name": "S_M_RECONCILE_TOTALS",
+      "type": "SESSION",
+      "metadata": {
+        "mapping": "M_RECONCILE_TOTALS"
+      }
+    }
   ],
   "edges": [
-    {"from": "S_CUSTOMER", "to": "WK_DIM"},
-    {"from": "WK_DIM", "to": "S_FACT"}
-  ]
+    {
+      "from": "S_M_LOAD_CUSTOMERS",
+      "to": "WK_DIMENSIONS_BUILD",
+      "type": "SUCCESS"
+    },
+    {
+      "from": "S_M_LOAD_PRODUCTS",
+      "to": "WK_DIMENSIONS_BUILD",
+      "type": "SUCCESS"
+    },
+    {
+      "from": "S_M_LOAD_ORDERS",
+      "to": "WK_FACT_PROCESSING",
+      "type": "SUCCESS"
+    },
+    {
+      "from": "WK_DIMENSIONS_BUILD",
+      "to": "WK_FACT_PROCESSING",
+      "type": "SUCCESS"
+    },
+    {
+      "from": "WK_FACT_PROCESSING",
+      "to": "S_M_AGGREGATE_SALES",
+      "type": "SUCCESS"
+    },
+    {
+      "from": "WK_FACT_PROCESSING",
+      "to": "S_M_AGGREGATE_INVENTORY",
+      "type": "SUCCESS"
+    },
+    {
+      "from": "S_M_AGGREGATE_SALES",
+      "to": "S_M_DATA_QUALITY_CHECK",
+      "type": "SUCCESS"
+    },
+    {
+      "from": "S_M_AGGREGATE_INVENTORY",
+      "to": "S_M_DATA_QUALITY_CHECK",
+      "type": "SUCCESS"
+    },
+    {
+      "from": "S_M_DATA_QUALITY_CHECK",
+      "to": "S_M_RECONCILE_TOTALS",
+      "type": "SUCCESS"
+    },
+    {
+      "from": "S_M_LOAD_CUSTOMERS",
+      "to": "S_M_RECONCILE_TOTALS",
+      "type": "FAILED"
+    },
+    {
+      "from": "WK_DIMENSIONS_BUILD",
+      "to": "S_M_RECONCILE_TOTALS",
+      "type": "FAILED"
+    }
+  ],
+  "execution_levels": [
+    ["S_M_LOAD_CUSTOMERS", "S_M_LOAD_PRODUCTS", "S_M_LOAD_ORDERS"],
+    ["WK_DIMENSIONS_BUILD"],
+    ["WK_FACT_PROCESSING"],
+    ["S_M_AGGREGATE_SALES", "S_M_AGGREGATE_INVENTORY"],
+    ["S_M_DATA_QUALITY_CHECK"],
+    ["S_M_RECONCILE_TOTALS"]
+  ],
+  "has_cycles": false,
+  "parallel_tasks": 3,
+  "total_tasks": 9,
+  "total_worklets": 2
 }
