@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     azure_openai_key: Optional[str] = None
     azure_openai_deployment: Optional[str] = None
     local_llm_path: Optional[str] = None
+    vllm_server_url: Optional[str] = None
+    ollama_url: Optional[str] = None
+    ollama_model: str = "llama3"
     
     # Databricks Configuration
     databricks_host: Optional[str] = None

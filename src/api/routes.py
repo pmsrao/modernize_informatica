@@ -594,14 +594,16 @@ async def analyze_summary(request: AnalyzeSummaryRequest):
         # Get canonical model
         canonical_model = _get_mapping_for_analysis(request)
         
-        # Get AI analysis
-        result = agent_orchestrator.run_all(canonical_model)
+        # Get AI analysis using MappingSummaryAgent
+        from ai_agents.mapping_summary_agent import MappingSummaryAgent
+        summary_agent = MappingSummaryAgent()
+        result = summary_agent.summarize(canonical_model)
         
         logger.info("Mapping summary generated successfully")
         
         return AIAnalysisResponse(
             success=True,
-            result={"summary": result.get("summary", {})},
+            result={"summary": result},
             message="Summary generated successfully"
         )
         
@@ -631,14 +633,16 @@ async def analyze_risks(request: AnalyzeRisksRequest):
         # Get canonical model
         canonical_model = _get_mapping_for_analysis(request)
         
-        # Get AI analysis
-        result = agent_orchestrator.run_all(canonical_model)
+        # Get AI analysis using RiskDetectionAgent
+        from ai_agents.risk_detection_agent import RiskDetectionAgent
+        risk_agent = RiskDetectionAgent()
+        result = risk_agent.detect_risks(canonical_model)
         
         logger.info("Risk analysis completed successfully")
         
         return AIAnalysisResponse(
             success=True,
-            result={"risks": result.get("risks", {})},
+            result={"risks": result},
             message="Risk analysis completed successfully"
         )
         
@@ -668,14 +672,16 @@ async def analyze_suggestions(request: AnalyzeSuggestionsRequest):
         # Get canonical model
         canonical_model = _get_mapping_for_analysis(request)
         
-        # Get AI analysis
-        result = agent_orchestrator.run_all(canonical_model)
+        # Get AI analysis using TransformationSuggestionAgent
+        from ai_agents.transformation_suggestion_agent import TransformationSuggestionAgent
+        suggestion_agent = TransformationSuggestionAgent()
+        result = suggestion_agent.suggest(canonical_model)
         
         logger.info("Suggestions generated successfully")
         
         return AIAnalysisResponse(
             success=True,
-            result={"suggestions": result.get("suggestions", {})},
+            result={"suggestions": result},
             message="Suggestions generated successfully"
         )
         
@@ -702,11 +708,21 @@ async def explain_expression(request: ExplainExpressionRequest):
     try:
         logger.info(f"Expression explanation requested: {request.expression[:50]}...")
         
-        # Get AI explanation
-        # TODO: Implement expression explanation agent
+        # Get AI explanation using RuleExplainerAgent
+        from ai_agents.rule_explainer_agent import RuleExplainerAgent
+        explainer_agent = RuleExplainerAgent()
+        
+        field_name = request.context.get("field_name", "field") if request.context else "field"
+        explanation = explainer_agent.explain_expression(
+            request.expression,
+            field_name,
+            request.context
+        )
+        
         result = {
             "expression": request.expression,
-            "explanation": "Expression explanation not yet fully implemented",
+            "field_name": field_name,
+            "explanation": explanation,
             "context": request.context
         }
         
