@@ -1,0 +1,12 @@
+
+{
+  "nodes": [
+    {"id": "S_CUSTOMER", "type": "session"},
+    {"id": "WK_DIM", "type": "worklet"},
+    {"id": "S_FACT", "type": "session"}
+  ],
+  "edges": [
+    {"from": "S_CUSTOMER", "to": "WK_DIM"},
+    {"from": "WK_DIM", "to": "S_FACT"}
+  ]
+}
