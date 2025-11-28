@@ -82,17 +82,49 @@ API will be available at `http://localhost:8000`
 - API Documentation: `http://localhost:8000/docs`
 - Health Check: `http://localhost:8000/health`
 
-### 4. Test with Sample Files
+### 4. Set Up Neo4j (for Graph Explorer)
 
 ```bash
-# Parse a mapping
-curl -X POST http://localhost:8000/api/v1/parse/mapping \
+# Start Neo4j using Docker
+./scripts/setup_neo4j.sh
+
+# Configure .env file
+# Add these lines to .env:
+# NEO4J_URI=bolt://localhost:7687
+# NEO4J_USER=neo4j
+# NEO4J_PASSWORD=password
+# ENABLE_GRAPH_STORE=true
+# GRAPH_FIRST=true
+```
+
+### 5. Start Frontend UI
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend will be available at `http://localhost:5173`
+
+**See [Graph Explorer UI Guide](docs/graph_explorer_guide.md) for detailed usage instructions.**
+
+### 6. Test with Sample Files
+
+```bash
+# Upload and parse a mapping (saves to Neo4j)
+curl -X POST http://localhost:8000/api/v1/upload \
   -F "file=@samples/complex/mapping_complex.xml"
+
+# Parse with AI enhancement (replace FILE_ID)
+curl -X POST http://localhost:8000/api/v1/parse/mapping \
+  -H "Content-Type: application/json" \
+  -d '{"file_id": "FILE_ID", "enhance_model": true}'
 
 # Get AI analysis
 curl -X POST http://localhost:8000/api/v1/analyze/summary \
   -H "Content-Type: application/json" \
-  -d '{"file_id": "your_file_id"}'
+  -d '{"mapping_id": "M_COMPLEX_SALES_ANALYTICS"}'
 ```
 
 ---
@@ -173,6 +205,7 @@ modernize_informatica/
 - [Solution Overview](solution.md) - Complete solution architecture and design
 - [Roadmap](roadmap.md) - Implementation status and next steps
 - [End-to-End Testing Guide](test_end_to_end.md) - Comprehensive testing instructions
+- [Graph Explorer UI Guide](docs/graph_explorer_guide.md) - **How to use the Graph Explorer UI**
 - [System Architecture](system_architecture.md) - Detailed component architecture
 - [AI Agents Guide](docs/ai_agents.md)
 - [API Usage Guide](docs/guides/ai_agents_usage.md)
