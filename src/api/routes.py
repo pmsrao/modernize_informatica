@@ -1810,6 +1810,8 @@ async def get_mapping_structure(mapping_name: str):
                                     })
                                     edge_set.add(edge_id)
         
+        logger.info(f"Built graph structure: {len(nodes)} nodes, {len(edges)} edges for mapping {mapping_name}")
+        
         return {
             "success": True,
             "mapping": mapping_name,
