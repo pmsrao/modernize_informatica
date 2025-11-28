@@ -52,7 +52,7 @@ OPENAI_API_KEY=your_key_here
 ```bash
 # Upload a mapping file
 curl -X POST "http://localhost:8000/api/v1/upload" \
-  -F "file=@samples/mapping_complex.xml"
+  -F "file=@samples/complex/mapping_complex.xml"
 ```
 
 **Expected Response**:

@@ -183,6 +183,7 @@ class GraphStore:
             trans_type = trans.get("type", "")
             
             # Prepare properties (exclude internal fields except _optimization_hint)
+            # Neo4j only supports primitive types, so exclude complex objects like ports, connectors
             trans_props = {
                 "name": trans_name,
                 "type": trans_type,
@@ -190,11 +191,19 @@ class GraphStore:
                 "optimization_hint": trans.get("_optimization_hint")
             }
             
-            # Add other non-internal properties
+            # Add other non-internal properties (only primitive types)
             for key, value in trans.items():
                 if not key.startswith("_") or key == "_optimization_hint":
-                    if key not in ["name", "type"]:  # Already set above
-                        trans_props[key] = value
+                    if key not in ["name", "type", "ports", "connectors"]:  # Exclude complex objects
+                        # Only add primitive types (str, int, float, bool, None) or lists of primitives
+                        if isinstance(value, (str, int, float, bool, type(None))):
+                            trans_props[key] = value
+                        elif isinstance(value, list) and all(isinstance(item, (str, int, float, bool, type(None))) for item in value):
+                            trans_props[key] = value
+                        # For complex objects, serialize to JSON string
+                        elif isinstance(value, (dict, list)):
+                            import json
+                            trans_props[f"{key}_json"] = json.dumps(value)
             
             tx.run("""
                 MERGE (t:Transformation {name: $name, mapping: $mapping})
@@ -305,10 +314,19 @@ class GraphStore:
                 "type": trans.get("type"),
                 "ports": []
             }
-            # Merge properties
+            # Merge properties (deserialize JSON strings back to objects)
+            import json
             for key, value in trans.items():
                 if key not in ["name", "type"]:
-                    trans_dict[key] = value
+                    # Deserialize JSON strings back to objects
+                    if key.endswith("_json") and isinstance(value, str):
+                        try:
+                            original_key = key[:-5]  # Remove "_json" suffix
+                            trans_dict[original_key] = json.loads(value)
+                        except json.JSONDecodeError:
+                            trans_dict[key] = value
+                    else:
+                        trans_dict[key] = value
             model["transformations"].append(trans_dict)
         
         # Load connectors
