@@ -221,7 +221,10 @@ class GraphQueries:
                 """, pattern=pattern_value)
             elif pattern_type == "table":
                 result = session.run("""
-                    MATCH (t:Table {name: $pattern})<-[:READS_TABLE|:WRITES_TABLE]-(s:Source|t:Target)<-[:HAS_SOURCE|:HAS_TARGET]-(m:Mapping)
+                    MATCH (tab:Table {name: $pattern})<-[:READS_TABLE]-(s:Source)<-[:HAS_SOURCE]-(m:Mapping)
+                    RETURN DISTINCT m.name as name, m.mapping_name as mapping_name
+                    UNION
+                    MATCH (tab:Table {name: $pattern})<-[:WRITES_TABLE]-(t:Target)<-[:HAS_TARGET]-(m:Mapping)
                     RETURN DISTINCT m.name as name, m.mapping_name as mapping_name
                     LIMIT 50
                 """, pattern=pattern_value)
@@ -246,10 +249,13 @@ class GraphQueries:
         """
         with self.graph_store.driver.session() as session:
             # Find all tables used by this mapping
+            # Use UNION to handle both Source and Target separately (Neo4j doesn't allow mixing label expressions)
             tables_result = session.run("""
-                MATCH (m:Mapping {name: $name})-[:HAS_SOURCE|:HAS_TARGET]->(s:Source|t:Target)-[:READS_TABLE|:WRITES_TABLE]->(tab:Table)
-                RETURN DISTINCT tab.name as table, tab.database as database, 
-                       collect(DISTINCT type(rel)) as relationship_types
+                MATCH (m:Mapping {name: $name})-[:HAS_SOURCE]->(s:Source)-[:READS_TABLE]->(tab:Table)
+                RETURN DISTINCT tab.name as table, tab.database as database, 'READS_TABLE' as relationship_type
+                UNION
+                MATCH (m:Mapping {name: $name})-[:HAS_TARGET]->(t:Target)-[:WRITES_TABLE]->(tab:Table)
+                RETURN DISTINCT tab.name as table, tab.database as database, 'WRITES_TABLE' as relationship_type
             """, name=mapping_name)
             
             tables = [dict(record) for record in tables_result]
@@ -270,7 +276,11 @@ class GraphQueries:
                 table_name = table_info.get("table")
                 if table_name:
                     shared = session.run("""
-                        MATCH (t:Table {name: $table})<-[:READS_TABLE|:WRITES_TABLE]-(s:Source|t:Target)<-[:HAS_SOURCE|:HAS_TARGET]-(m:Mapping)
+                        MATCH (tab:Table {name: $table})<-[:READS_TABLE]-(s:Source)<-[:HAS_SOURCE]-(m:Mapping)
+                        WHERE m.name <> $mapping
+                        RETURN DISTINCT m.name as name, m.mapping_name as mapping_name
+                        UNION
+                        MATCH (tab:Table {name: $table})<-[:WRITES_TABLE]-(t:Target)<-[:HAS_TARGET]-(m:Mapping)
                         WHERE m.name <> $mapping
                         RETURN DISTINCT m.name as name, m.mapping_name as mapping_name
                         LIMIT 10

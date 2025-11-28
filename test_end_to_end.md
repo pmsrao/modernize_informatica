@@ -87,7 +87,7 @@ curl -X POST "http://localhost:8000/api/v1/parse/mapping" \
 {
   "success": true,
   "data": {
-    "mapping_name": "M_LOAD_CUSTOMER",
+    "mapping_name": "M_COMPLEX_SALES_ANALYTICS",
     "sources": [...],
     "targets": [...],
     "transformations": [...],
@@ -109,8 +109,8 @@ curl -X POST "http://localhost:8000/api/v1/parse/mapping" \
 
 **Verify in API Logs**:
 ```
-INFO: Mapping parsed successfully: M_LOAD_CUSTOMER (enhancement: True)
-DEBUG: Model explicitly saved to graph: M_LOAD_CUSTOMER
+INFO: Mapping parsed successfully: M_COMPLEX_SALES_ANALYTICS (enhancement: True)
+DEBUG: Model explicitly saved to graph: M_COMPLEX_SALES_ANALYTICS
 ```
 
 ---
@@ -136,7 +136,7 @@ ORDER BY m.name
 
 ```cypher
 // View complete mapping structure
-MATCH (m:Mapping {name: "M_LOAD_CUSTOMER"})
+MATCH (m:Mapping {name: "M_COMPLEX_SALES_ANALYTICS"})
 OPTIONAL MATCH (m)-[:HAS_SOURCE]->(s:Source)
 OPTIONAL MATCH (m)-[:HAS_TARGET]->(t:Target)
 OPTIONAL MATCH (m)-[:HAS_TRANSFORMATION]->(trans:Transformation)
@@ -147,7 +147,7 @@ RETURN m, s, t, trans
 
 ```cypher
 // View all transformations in a mapping
-MATCH (m:Mapping {name: "M_LOAD_CUSTOMER"})-[:HAS_TRANSFORMATION]->(t:Transformation)
+MATCH (m:Mapping {name: "M_COMPLEX_SALES_ANALYTICS"})-[:HAS_TRANSFORMATION]->(t:Transformation)
 RETURN t.name, t.type, t.properties
 ORDER BY t.name
 ```
@@ -157,7 +157,7 @@ ORDER BY t.name
 ```cypher
 // View data flow
 MATCH path = (s:Source)-[:FLOWS_TO*]->(t:Target)
-WHERE s.mapping = "M_LOAD_CUSTOMER"
+WHERE s.mapping = "M_COMPLEX_SALES_ANALYTICS"
 RETURN path
 LIMIT 10
 ```
@@ -166,7 +166,10 @@ LIMIT 10
 
 ```cypher
 // View all tables used by mapping
-MATCH (m:Mapping {name: "M_LOAD_CUSTOMER"})-[:HAS_SOURCE|:HAS_TARGET]->(st)-[:READS_TABLE|:WRITES_TABLE]->(tab:Table)
+MATCH (m:Mapping {name: "M_COMPLEX_SALES_ANALYTICS"})-[:HAS_SOURCE]->(s:Source)-[:READS_TABLE]->(tab:Table)
+RETURN DISTINCT tab.name, tab.database
+UNION
+MATCH (m:Mapping {name: "M_COMPLEX_SALES_ANALYTICS"})-[:HAS_TARGET]->(t:Target)-[:WRITES_TABLE]->(tab:Table)
 RETURN DISTINCT tab.name, tab.database
 ```
 
@@ -174,7 +177,7 @@ RETURN DISTINCT tab.name, tab.database
 
 ```cypher
 // View AI enhancements applied
-MATCH (m:Mapping {name: "M_LOAD_CUSTOMER"})
+MATCH (m:Mapping {name: "M_COMPLEX_SALES_ANALYTICS"})
 RETURN m._enhancements_applied, m._provenance
 ```
 
@@ -186,7 +189,7 @@ RETURN m._enhancements_applied, m._provenance
 
 ```bash
 # Use API endpoint
-curl "http://localhost:8000/api/v1/graph/mappings/M_LOAD_CUSTOMER"
+curl "http://localhost:8000/api/v1/graph/mappings/M_COMPLEX_SALES_ANALYTICS"
 ```
 
 #### 4.2 Check Graph Statistics
@@ -219,7 +222,7 @@ curl "http://localhost:8000/api/v1/graph/statistics"
 curl -X POST "http://localhost:8000/api/v1/generate/pyspark" \
   -H "Content-Type: application/json" \
   -d '{
-    "mapping_id": "M_LOAD_CUSTOMER",
+    "mapping_id": "M_COMPLEX_SALES_ANALYTICS",
     "review_code": true
   }'
 ```
@@ -255,7 +258,7 @@ curl -X POST "http://localhost:8000/api/v1/generate/pyspark" \
 **Verify in API Logs**:
 ```
 INFO: Loading from graph (graph_first=True)...
-INFO: Model loaded from graph: M_LOAD_CUSTOMER
+INFO: Model loaded from graph: M_COMPLEX_SALES_ANALYTICS
 INFO: Code review completed: LOW severity, score: 85/100
 ```
 
@@ -325,7 +328,7 @@ curl -X POST "http://localhost:8000/api/v1/analyze/fix" \
 curl -X POST "http://localhost:8000/api/v1/analyze/summary" \
   -H "Content-Type: application/json" \
   -d '{
-    "mapping_id": "M_LOAD_CUSTOMER"
+    "mapping_id": "M_COMPLEX_SALES_ANALYTICS"
   }'
 ```
 
@@ -335,7 +338,7 @@ curl -X POST "http://localhost:8000/api/v1/analyze/summary" \
 curl -X POST "http://localhost:8000/api/v1/analyze/risks" \
   -H "Content-Type: application/json" \
   -d '{
-    "mapping_id": "M_LOAD_CUSTOMER"
+    "mapping_id": "M_COMPLEX_SALES_ANALYTICS"
   }'
 ```
 
@@ -345,7 +348,7 @@ curl -X POST "http://localhost:8000/api/v1/analyze/risks" \
 curl -X POST "http://localhost:8000/api/v1/analyze/suggestions" \
   -H "Content-Type: application/json" \
   -d '{
-    "mapping_id": "M_LOAD_CUSTOMER"
+    "mapping_id": "M_COMPLEX_SALES_ANALYTICS"
   }'
 ```
 
@@ -362,13 +365,13 @@ curl "http://localhost:8000/api/v1/graph/mappings/using-table/CUSTOMER_SRC"
 #### Get Dependencies
 
 ```bash
-curl "http://localhost:8000/api/v1/graph/mappings/M_LOAD_CUSTOMER/dependencies"
+curl "http://localhost:8000/api/v1/graph/mappings/M_COMPLEX_SALES_ANALYTICS/dependencies"
 ```
 
 #### Get Impact Analysis
 
 ```bash
-curl "http://localhost:8000/api/v1/graph/mappings/M_LOAD_CUSTOMER/impact"
+curl "http://localhost:8000/api/v1/graph/mappings/M_COMPLEX_SALES_ANALYTICS/impact"
 ```
 
 #### Get Migration Readiness
