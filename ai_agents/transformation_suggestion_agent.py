@@ -108,10 +108,20 @@ class TransformationSuggestionAgent:
             
             # Check expression transformations
             if trans_type == "EXPRESSION":
-                output_ports = transformation.get("output_ports", [])
+                # Get output ports - check both output_ports and ports with port_type
+                all_ports = transformation.get("ports", [])
+                output_ports = [p for p in all_ports if p.get("port_type") == "OUTPUT" or p.get("expression")]
+                
+                # Also check output_ports if it exists
+                if not output_ports:
+                    output_ports = transformation.get("output_ports", [])
+                
                 for port in output_ports:
                     field = port.get("name", "")
                     expression = port.get("expression", "")
+                    if not expression:
+                        continue
+                    
                     expr_upper = expression.upper()
                     
                     # Suggest concat_ws for string concatenation
@@ -164,7 +174,11 @@ class TransformationSuggestionAgent:
             
             # Suggest splitting complex transformations
             if trans_type == "EXPRESSION":
-                output_ports = transformation.get("output_ports", [])
+                all_ports = transformation.get("ports", [])
+                output_ports = [p for p in all_ports if p.get("port_type") == "OUTPUT" or p.get("expression")]
+                if not output_ports:
+                    output_ports = transformation.get("output_ports", [])
+                
                 if len(output_ports) > 10:
                     suggestions.append({
                         "transformation": trans_name,
@@ -177,6 +191,78 @@ class TransformationSuggestionAgent:
                             "More modular design"
                         ],
                         "improved_code": "Split into EXP_CALCULATIONS, EXP_ENRICHMENTS, etc.",
+                        "priority": "Medium"
+                    })
+            
+            # Suggest broadcast join for small lookup tables
+            if trans_type == "LOOKUP":
+                lookup_type = transformation.get("lookup_type", "connected")
+                table_name = transformation.get("table_name", "")
+                if lookup_type == "connected" and table_name:
+                    suggestions.append({
+                        "transformation": trans_name,
+                        "field": None,
+                        "current_pattern": f"Connected lookup transformation: {trans_name} (table: {table_name})",
+                        "suggestion": "Use broadcast join for small lookup tables to improve performance",
+                        "benefits": [
+                            "Faster join performance for small tables",
+                            "Reduces shuffle operations",
+                            "Better resource utilization"
+                        ],
+                        "improved_code": f"df.join(F.broadcast(lookup_df), join_condition, 'left')",
+                        "priority": "Medium"
+                    })
+            
+            # Suggest partitioning for aggregators
+            if trans_type == "AGGREGATOR":
+                group_by_ports = transformation.get("group_by_ports", [])
+                aggregate_functions = transformation.get("aggregate_functions", [])
+                if group_by_ports and len(group_by_ports) > 0:
+                    suggestions.append({
+                        "transformation": trans_name,
+                        "field": None,
+                        "current_pattern": f"Aggregator with group by: {', '.join(group_by_ports)}",
+                        "suggestion": "Consider partitioning by group by columns before aggregation for better performance on large datasets",
+                        "benefits": [
+                            "Reduces shuffle operations",
+                            "Better parallelization",
+                            "Improved performance on large datasets"
+                        ],
+                        "improved_code": f"df.repartition(*[{', '.join([f\"F.col('{p}')\" for p in group_by_ports])}]).groupBy(*[{', '.join([f\"F.col('{p}')\" for p in group_by_ports])}]).agg(...)",
+                        "priority": "Low"
+                    })
+                
+                # Suggest using window functions for ranking operations
+                if any("RANK" in str(af).upper() or "ROW_NUMBER" in str(af).upper() for af in aggregate_functions):
+                    suggestions.append({
+                        "transformation": trans_name,
+                        "field": None,
+                        "current_pattern": f"Aggregator with ranking functions",
+                        "suggestion": "Consider using window functions (Window.partitionBy().orderBy()) instead of aggregator for ranking",
+                        "benefits": [
+                            "More efficient for ranking operations",
+                            "Preserves all rows (not just aggregated)",
+                            "Better performance"
+                        ],
+                        "improved_code": "df.withColumn('rank', F.rank().over(Window.partitionBy(...).orderBy(...)))",
+                        "priority": "Medium"
+                    })
+            
+            # Suggest filter pushdown for filters
+            if trans_type == "FILTER":
+                filter_condition = transformation.get("filter_condition", "")
+                if filter_condition:
+                    suggestions.append({
+                        "transformation": trans_name,
+                        "field": None,
+                        "current_pattern": f"Filter transformation: {filter_condition[:50]}...",
+                        "suggestion": "Apply filter as early as possible in the pipeline (filter pushdown)",
+                        "benefits": [
+                            "Reduces data volume early",
+                            "Improves performance of downstream transformations",
+                            "Reduces memory usage"
+                        ],
+                        "improved_code": "df.filter(filter_condition)  # Apply early in pipeline",
                         "priority": "Medium"
                     })
         
