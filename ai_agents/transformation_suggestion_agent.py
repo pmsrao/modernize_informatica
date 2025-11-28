@@ -218,6 +218,10 @@ class TransformationSuggestionAgent:
                 group_by_ports = transformation.get("group_by_ports", [])
                 aggregate_functions = transformation.get("aggregate_functions", [])
                 if group_by_ports and len(group_by_ports) > 0:
+                    # Build column references for improved code example
+                    col_refs = ', '.join([f"F.col('{p}')" for p in group_by_ports])
+                    improved_code = f"df.repartition(*[{col_refs}]).groupBy(*[{col_refs}]).agg(...)"
+                    
                     suggestions.append({
                         "transformation": trans_name,
                         "field": None,
@@ -228,7 +232,7 @@ class TransformationSuggestionAgent:
                             "Better parallelization",
                             "Improved performance on large datasets"
                         ],
-                        "improved_code": f"df.repartition(*[{', '.join([f\"F.col('{p}')\" for p in group_by_ports])}]).groupBy(*[{', '.join([f\"F.col('{p}')\" for p in group_by_ports])}]).agg(...)",
+                        "improved_code": improved_code,
                         "priority": "Low"
                     })
                 
