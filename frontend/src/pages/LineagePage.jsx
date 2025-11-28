@@ -570,12 +570,27 @@ export default function LineagePage() {
         </div>
       </div>
 
-        <div style={{ marginTop: '10px' }}>
-          <label style={{ marginRight: '10px' }}>Export Format:</label>
+      {/* Export Controls */}
+      {dagData && (
+        <div style={{ 
+          marginBottom: '20px', 
+          padding: '15px', 
+          background: '#f5f5f5', 
+          borderRadius: '8px',
+          border: '1px solid #ddd'
+        }}>
+          <label style={{ marginRight: '10px', fontWeight: 'bold' }}>Export Format:</label>
           <select
             value={visualizationFormat}
             onChange={(e) => setVisualizationFormat(e.target.value)}
-            style={{ padding: '5px', marginRight: '10px' }}
+            style={{ 
+              padding: '8px', 
+              marginRight: '10px',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              fontSize: '14px',
+              cursor: 'pointer'
+            }}
           >
             <option value="json">JSON</option>
             <option value="dot">DOT</option>
@@ -586,18 +601,19 @@ export default function LineagePage() {
             onClick={() => exportDAG(visualizationFormat)}
             disabled={!dagData}
             style={{
-              padding: '5px 15px',
+              padding: '8px 16px',
               background: !dagData ? '#ccc' : '#2196F3',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
-              cursor: !dagData ? 'not-allowed' : 'pointer'
+              cursor: !dagData ? 'not-allowed' : 'pointer',
+              fontWeight: 'bold'
             }}
           >
-            Export DAG
+            📥 Export DAG
           </button>
         </div>
-      </div>
+      )}
 
       {error && (
         <div style={{
