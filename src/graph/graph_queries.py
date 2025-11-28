@@ -199,4 +199,136 @@ class GraphQueries:
             stats["complexity_distribution"] = {record["complexity"]: record["count"] for record in result}
             
             return stats
+    
+    def find_pattern_across_mappings(self, pattern_type: str, pattern_value: str) -> List[Dict[str, Any]]:
+        """Find mappings using a specific pattern.
+        
+        Args:
+            pattern_type: Type of pattern (e.g., "expression", "transformation", "table")
+            pattern_value: Pattern value to search for
+            
+        Returns:
+            List of mappings using the pattern
+        """
+        with self.graph_store.driver.session() as session:
+            if pattern_type == "expression":
+                result = session.run("""
+                    MATCH (t:Transformation)-[:HAS_TRANSFORMATION]->(m:Mapping)
+                    WHERE toString(t.properties) CONTAINS $pattern
+                    RETURN DISTINCT m.name as name, m.mapping_name as mapping_name, 
+                           t.name as transformation, t.type as type
+                    LIMIT 50
+                """, pattern=pattern_value)
+            elif pattern_type == "table":
+                result = session.run("""
+                    MATCH (t:Table {name: $pattern})<-[:READS_TABLE|:WRITES_TABLE]-(s:Source|t:Target)<-[:HAS_SOURCE|:HAS_TARGET]-(m:Mapping)
+                    RETURN DISTINCT m.name as name, m.mapping_name as mapping_name
+                    LIMIT 50
+                """, pattern=pattern_value)
+            else:
+                result = session.run("""
+                    MATCH (m:Mapping)
+                    WHERE toString(m) CONTAINS $pattern
+                    RETURN DISTINCT m.name as name, m.mapping_name as mapping_name
+                    LIMIT 50
+                """, pattern=pattern_value)
+            
+            return [dict(record) for record in result]
+    
+    def get_impact_analysis(self, mapping_name: str) -> Dict[str, Any]:
+        """Get comprehensive impact analysis for a mapping.
+        
+        Args:
+            mapping_name: Mapping name to analyze
+            
+        Returns:
+            Impact analysis results
+        """
+        with self.graph_store.driver.session() as session:
+            # Find all tables used by this mapping
+            tables_result = session.run("""
+                MATCH (m:Mapping {name: $name})-[:HAS_SOURCE|:HAS_TARGET]->(s:Source|t:Target)-[:READS_TABLE|:WRITES_TABLE]->(tab:Table)
+                RETURN DISTINCT tab.name as table, tab.database as database, 
+                       collect(DISTINCT type(rel)) as relationship_types
+            """, name=mapping_name)
+            
+            tables = [dict(record) for record in tables_result]
+            
+            # Find dependent mappings
+            deps_result = session.run("""
+                MATCH (m:Mapping {name: $name})<-[:DEPENDS_ON*]-(dependent:Mapping)
+                RETURN DISTINCT dependent.name as name, dependent.mapping_name as mapping_name,
+                       length(path) as depth
+                ORDER BY depth
+            """, name=mapping_name)
+            
+            dependents = [dict(record) for record in deps_result]
+            
+            # Find mappings using same tables
+            shared_tables = []
+            for table_info in tables:
+                table_name = table_info.get("table")
+                if table_name:
+                    shared = session.run("""
+                        MATCH (t:Table {name: $table})<-[:READS_TABLE|:WRITES_TABLE]-(s:Source|t:Target)<-[:HAS_SOURCE|:HAS_TARGET]-(m:Mapping)
+                        WHERE m.name <> $mapping
+                        RETURN DISTINCT m.name as name, m.mapping_name as mapping_name
+                        LIMIT 10
+                    """, table=table_name, mapping=mapping_name)
+                    shared_tables.extend([dict(record) for record in shared])
+            
+            return {
+                "mapping": mapping_name,
+                "tables_used": tables,
+                "dependent_mappings": dependents,
+                "shared_tables": list(set([s["name"] for s in shared_tables])),
+                "impact_score": self._calculate_impact_score(len(dependents), len(tables), len(shared_tables))
+            }
+    
+    def _calculate_impact_score(self, num_dependents: int, num_tables: int, num_shared: int) -> str:
+        """Calculate impact score.
+        
+        Args:
+            num_dependents: Number of dependent mappings
+            num_tables: Number of tables used
+            num_shared: Number of shared tables
+            
+        Returns:
+            Impact score (LOW, MEDIUM, HIGH)
+        """
+        score = num_dependents * 3 + num_tables * 1 + num_shared * 2
+        
+        if score > 20:
+            return "HIGH"
+        elif score > 10:
+            return "MEDIUM"
+        else:
+            return "LOW"
+    
+    def get_migration_readiness(self) -> List[Dict[str, Any]]:
+        """Get migration readiness assessment for all mappings.
+        
+        Returns:
+            List of mappings with readiness scores
+        """
+        with self.graph_store.driver.session() as session:
+            result = session.run("""
+                MATCH (m:Mapping)
+                OPTIONAL MATCH (m)-[:HAS_TRANSFORMATION]->(t:Transformation)
+                WITH m, count(t) as trans_count,
+                     collect(DISTINCT t.type) as trans_types
+                RETURN m.name as name, m.mapping_name as mapping_name,
+                       m.complexity as complexity,
+                       trans_count,
+                       trans_types,
+                       CASE 
+                         WHEN m.complexity = 'LOW' AND trans_count < 5 THEN 'READY'
+                         WHEN m.complexity = 'MEDIUM' AND trans_count < 10 THEN 'READY'
+                         WHEN m.complexity = 'HIGH' THEN 'REVIEW_NEEDED'
+                         ELSE 'REVIEW_NEEDED'
+                       END as readiness
+                ORDER BY readiness, trans_count
+            """)
+            
+            return [dict(record) for record in result]
 

@@ -55,6 +55,10 @@ class AgentOrchestrator:
         self.enhancement_agent = ModelEnhancementAgent(self.llm, use_llm=False)
         self.validation_agent = ModelValidationAgent()
         
+        # Initialize code review agent (Priority 2)
+        from ai_agents.code_review_agent import CodeReviewAgent
+        self.review_agent = CodeReviewAgent(self.llm, use_llm=True)
+        
         logger.info("Agent Orchestrator initialized")
 
     def run_all(self, mapping: Dict[str, Any]) -> Dict[str, Any]:
@@ -298,3 +302,50 @@ class AgentOrchestrator:
         except Exception as e:
             logger.error(f"Process with enhancement failed: {str(e)}")
             raise ModernizationError(f"Process with enhancement failed: {str(e)}") from e
+    
+    def review_code(self, code: str, canonical_model: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Review generated code for issues and improvements.
+        
+        Args:
+            code: Generated code to review
+            canonical_model: Optional canonical model for context
+            
+        Returns:
+            Review results
+        """
+        try:
+            logger.info("Reviewing generated code")
+            review = self.review_agent.review(code, canonical_model)
+            logger.info(f"Code review completed: {review.get('severity')} severity, score: {review.get('score')}/100")
+            return review
+        except Exception as e:
+            logger.error(f"Code review failed: {str(e)}")
+            raise ModernizationError(f"Code review failed: {str(e)}") from e
+    
+    def fix_code(self, code: str, issues: List[Dict[str, Any]], canonical_model: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Fix code based on review issues.
+        
+        Args:
+            code: Code to fix
+            issues: List of issues from review
+            canonical_model: Optional canonical model for context
+            
+        Returns:
+            Fixed code result
+        """
+        try:
+            logger.info(f"Fixing code based on {len(issues)} issues")
+            
+            # Extract error messages from issues
+            error_messages = [f"{i.get('category')}: {i.get('issue')}" for i in issues if i.get('severity') in ['HIGH', 'MEDIUM']]
+            error_message = "; ".join(error_messages) if error_messages else None
+            
+            # Use code fix agent
+            fix_result = self.code_fix_agent.fix(code, error_message=error_message)
+            
+            logger.info("Code fix completed")
+            return fix_result
+            
+        except Exception as e:
+            logger.error(f"Code fix failed: {str(e)}")
+            raise ModernizationError(f"Code fix failed: {str(e)}") from e

@@ -2,6 +2,7 @@
 from ai_agents.agent_orchestrator import AgentOrchestrator
 from ai_agents.model_enhancement_agent import ModelEnhancementAgent
 from ai_agents.model_validation_agent import ModelValidationAgent
+from ai_agents.code_review_agent import CodeReviewAgent
 from ai_agents.rule_explainer_agent import RuleExplainerAgent
 from ai_agents.mapping_summary_agent import MappingSummaryAgent
 from ai_agents.risk_detection_agent import RiskDetectionAgent
@@ -14,6 +15,7 @@ __all__ = [
     "RiskDetectionAgent",
     "TransformationSuggestionAgent",
     "ModelEnhancementAgent",
-    "ModelValidationAgent"
+    "ModelValidationAgent",
+    "CodeReviewAgent"
 ]
 

@@ -55,6 +55,7 @@ class GeneratePySparkRequest(BaseModel):
     mapping_id: Optional[str] = Field(None, description="Mapping ID from version store")
     canonical_model: Optional[Dict[str, Any]] = Field(None, description="Canonical model directly")
     file_id: Optional[str] = Field(None, description="File ID to parse and generate from")
+    review_code: bool = Field(True, description="Enable code review after generation")
 
 
 class GenerateDLTRequest(BaseModel):
@@ -85,6 +86,7 @@ class GenerateResponse(BaseModel):
     language: str = Field(..., description="Programming language (pyspark, dlt, sql, markdown)")
     message: str = Field(default="Code generated successfully")
     errors: List[str] = Field(default_factory=list, description="Any errors encountered")
+    review: Optional[Dict[str, Any]] = Field(None, description="Optional code review results")
 
 
 # AI Analysis Models

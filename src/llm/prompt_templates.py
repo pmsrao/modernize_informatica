@@ -511,3 +511,131 @@ TRANSFORMATION_SUGGESTION_PROMPT = """
 Suggest transformation optimizations for the expression:
 {expr}
 """
+
+
+# ============================================================================
+# Model Enhancement Templates
+# ============================================================================
+
+def get_model_enhancement_prompt(canonical_model: Dict[str, Any]) -> str:
+    """Generate prompt for enhancing canonical model with AI insights.
+    
+    Args:
+        canonical_model: Canonical mapping model structure
+        
+    Returns:
+        Formatted prompt string
+    """
+    mapping_json = json.dumps(canonical_model, indent=2)
+    
+    return f"""You are an expert data engineer enhancing Informatica ETL mappings for modern data platforms (Databricks, Spark).
+
+Your task is to analyze this canonical mapping model and suggest enhancements that will improve:
+- Code quality and maintainability
+- Performance optimization
+- Data quality and validation
+- Best practices for modern data platforms
+
+Mapping Structure:
+{mapping_json}
+
+Analyze the mapping and provide enhancement suggestions in these categories:
+
+1. **Metadata Completion**:
+   - Infer missing data types from field names and context
+   - Add missing constraints (NOT NULL, UNIQUE, etc.)
+   - Suggest appropriate data types for better performance
+
+2. **Performance Optimizations**:
+   - Suggest partitioning strategies
+   - Recommend broadcast joins for small lookup tables
+   - Identify filter pushdown opportunities
+   - Suggest window function optimizations
+   - Recommend splitting complex transformations
+
+3. **Data Quality Rules**:
+   - Add validation rules for key fields
+   - Suggest data quality checks
+   - Recommend constraint enforcement
+
+4. **Best Practices**:
+   - Modernize patterns to Databricks/Spark best practices
+   - Suggest code organization improvements
+   - Recommend naming conventions
+
+Return your enhancements as a JSON object:
+{{
+  "metadata_enhancements": [
+    {{
+      "field": "source_name/field_name or transformation_name/port_name",
+      "suggestion": "Add data type: STRING",
+      "reason": "Field name pattern suggests string type",
+      "confidence": "High|Medium|Low"
+    }}
+  ],
+  "optimization_hints": [
+    {{
+      "transformation": "transformation_name",
+      "hint": "broadcast_join|partition_by|filter_pushdown|window_function",
+      "reason": "Explanation of why this optimization helps",
+      "priority": "High|Medium|Low"
+    }}
+  ],
+  "data_quality_rules": [
+    {{
+      "type": "NOT_NULL|UNIQUE|RANGE_CHECK|FORMAT_CHECK",
+      "field": "field_name",
+      "rule": "Rule description",
+      "severity": "ERROR|WARNING|INFO"
+    }}
+  ],
+  "best_practices": [
+    {{
+      "area": "naming|structure|organization",
+      "suggestion": "Suggestion description",
+      "benefit": "Why this is better"
+    }}
+  ],
+  "performance_metadata": {{
+    "estimated_complexity": "LOW|MEDIUM|HIGH",
+    "estimated_runtime": "SHORT|MEDIUM|LONG",
+    "bottlenecks": ["bottleneck1", "bottleneck2"],
+    "optimization_opportunities": ["opp1", "opp2"]
+  }}
+}}
+
+Example Response:
+{{
+  "metadata_enhancements": [
+    {{
+      "field": "SQ_CUSTOMER/CUSTOMER_ID",
+      "suggestion": "Add constraint: PRIMARY_KEY",
+      "reason": "Field name and usage pattern suggest primary key",
+      "confidence": "High"
+    }}
+  ],
+  "optimization_hints": [
+    {{
+      "transformation": "LK_REGION",
+      "hint": "broadcast_join",
+      "reason": "Region lookup table is small (< 100 rows), broadcast will improve join performance",
+      "priority": "High"
+    }}
+  ],
+  "data_quality_rules": [
+    {{
+      "type": "NOT_NULL",
+      "field": "CUSTOMER_ID",
+      "rule": "CUSTOMER_ID should not be null",
+      "severity": "ERROR"
+    }}
+  ],
+  "performance_metadata": {{
+    "estimated_complexity": "MEDIUM",
+    "estimated_runtime": "MEDIUM",
+    "bottlenecks": ["Large aggregation on CUSTOMER_ID"],
+    "optimization_opportunities": ["Partition by CUSTOMER_ID for aggregation"]
+  }}
+}}
+
+Enhancement Suggestions:"""

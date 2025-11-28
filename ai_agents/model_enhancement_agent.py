@@ -213,17 +213,166 @@ class ModelEnhancementAgent:
     def _llm_enhancements(self, model: Dict[str, Any]) -> Dict[str, Any]:
         """LLM-based comprehensive enhancements.
         
-        Note: This will be implemented in Phase 3. For Phase 1, this is a placeholder.
-        
         Args:
             model: Canonical model
             
         Returns:
             Enhanced model with LLM-based improvements
         """
-        # Phase 1: Return model as-is (LLM enhancements in Phase 3)
-        logger.debug("LLM enhancements not yet implemented (Phase 3)")
-        return model
+        try:
+            mapping_name = model.get("mapping_name", "unknown")
+            logger.info(f"Applying LLM-based enhancements to: {mapping_name}")
+            
+            # Import prompt template
+            from src.llm.prompt_templates import get_model_enhancement_prompt
+            
+            # Build prompt
+            prompt = get_model_enhancement_prompt(model)
+            
+            # Call LLM
+            response = self.llm.generate(prompt, max_tokens=2000)
+            
+            # Parse LLM response
+            enhancements = self._parse_llm_enhancements(response)
+            
+            # Apply enhancements to model
+            enhanced = self._apply_llm_enhancements(model, enhancements)
+            
+            logger.info(f"LLM enhancements applied to: {mapping_name}")
+            return enhanced
+            
+        except Exception as e:
+            logger.warning(f"LLM enhancement failed: {str(e)}, using pattern-based only")
+            # Return model as-is if LLM fails
+            return model
+    
+    def _parse_llm_enhancements(self, llm_response: str) -> Dict[str, Any]:
+        """Parse LLM response into structured enhancements.
+        
+        Args:
+            llm_response: Raw LLM response text
+            
+        Returns:
+            Structured enhancements dictionary
+        """
+        try:
+            # Try to extract JSON from response
+            import re
+            
+            # Look for JSON block in response
+            json_match = re.search(r'\{.*\}', llm_response, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+                enhancements = json.loads(json_str)
+                return enhancements
+            else:
+                # If no JSON found, return empty enhancements
+                logger.warning("No JSON found in LLM response, using empty enhancements")
+                return {}
+                
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse LLM response as JSON: {str(e)}")
+            return {}
+        except Exception as e:
+            logger.warning(f"Error parsing LLM enhancements: {str(e)}")
+            return {}
+    
+    def _apply_llm_enhancements(self, model: Dict[str, Any], enhancements: Dict[str, Any]) -> Dict[str, Any]:
+        """Apply LLM-suggested enhancements to model.
+        
+        Args:
+            model: Original canonical model
+            enhancements: LLM-suggested enhancements
+            
+        Returns:
+            Enhanced model
+        """
+        enhanced = json.loads(json.dumps(model))  # Deep copy
+        llm_enhancements_applied = []
+        
+        # Apply metadata enhancements
+        for meta_enh in enhancements.get("metadata_enhancements", []):
+            field_path = meta_enh.get("field", "")
+            suggestion = meta_enh.get("suggestion", "")
+            confidence = meta_enh.get("confidence", "Medium")
+            
+            if confidence in ["High", "Medium"]:
+                # Parse field path (e.g., "SQ_CUSTOMER/CUSTOMER_ID")
+                parts = field_path.split("/")
+                if len(parts) == 2:
+                    source_or_trans = parts[0]
+                    field_name = parts[1]
+                    
+                    # Find and update field
+                    for source in enhanced.get("sources", []):
+                        if source.get("name") == source_or_trans:
+                            for field in source.get("fields", []):
+                                if field.get("name") == field_name:
+                                    # Apply suggestion (e.g., "Add data type: STRING")
+                                    if "data_type" in suggestion:
+                                        data_type = suggestion.split(":")[-1].strip()
+                                        field["data_type"] = data_type
+                                        llm_enhancements_applied.append(f"Added data type {data_type} to {field_path}")
+                    
+                    # Check transformations
+                    for trans in enhanced.get("transformations", []):
+                        if trans.get("name") == source_or_trans:
+                            for port in trans.get("ports", []):
+                                if port.get("name") == field_name:
+                                    if "data_type" in suggestion:
+                                        data_type = suggestion.split(":")[-1].strip()
+                                        port["data_type"] = data_type
+                                        llm_enhancements_applied.append(f"Added data type {data_type} to {field_path}")
+        
+        # Apply optimization hints (merge with existing)
+        for opt_hint in enhancements.get("optimization_hints", []):
+            trans_name = opt_hint.get("transformation", "")
+            hint = opt_hint.get("hint", "")
+            priority = opt_hint.get("priority", "Medium")
+            
+            if priority in ["High", "Medium"]:
+                for trans in enhanced.get("transformations", []):
+                    if trans.get("name") == trans_name:
+                        # Merge with existing hints
+                        if "_optimization_hint" not in trans or priority == "High":
+                            trans["_optimization_hint"] = hint
+                            trans["_optimization_reason"] = opt_hint.get("reason", "")
+                            llm_enhancements_applied.append(f"Added {hint} hint to {trans_name}")
+        
+        # Apply data quality rules
+        if "_data_quality_rules" not in enhanced:
+            enhanced["_data_quality_rules"] = []
+        
+        for dq_rule in enhancements.get("data_quality_rules", []):
+            rule_type = dq_rule.get("type", "")
+            field = dq_rule.get("field", "")
+            severity = dq_rule.get("severity", "WARNING")
+            
+            if severity in ["ERROR", "WARNING"]:
+                enhanced["_data_quality_rules"].append({
+                    "type": rule_type,
+                    "field": field,
+                    "severity": severity,
+                    "description": dq_rule.get("rule", "")
+                })
+                llm_enhancements_applied.append(f"Added {rule_type} rule for {field}")
+        
+        # Update performance metadata
+        perf_meta = enhancements.get("performance_metadata", {})
+        if perf_meta:
+            if "_performance_metadata" not in enhanced:
+                enhanced["_performance_metadata"] = {}
+            
+            # Merge performance metadata
+            enhanced["_performance_metadata"].update(perf_meta)
+            llm_enhancements_applied.append("Updated performance metadata from LLM")
+        
+        # Track LLM enhancements
+        if "_llm_enhancements_applied" not in enhanced:
+            enhanced["_llm_enhancements_applied"] = []
+        enhanced["_llm_enhancements_applied"].extend(llm_enhancements_applied)
+        
+        return enhanced
     
     def _create_provenance(self, original_model: Dict[str, Any], 
                           enhanced_model: Dict[str, Any]) -> Dict[str, Any]:

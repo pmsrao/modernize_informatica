@@ -464,6 +464,24 @@ async def generate_pyspark(request: GeneratePySparkRequest):
         generator = PySparkGenerator()
         code = generator.generate(canonical_model)
         
+        # Optional: Review code (if requested)
+        review_result = None
+        if hasattr(request, 'review_code') and request.review_code:
+            try:
+                review_result = agent_orchestrator.review_code(code, canonical_model)
+                if review_result.get("needs_fix"):
+                    # Auto-fix if high severity issues found
+                    if review_result.get("severity") == "HIGH":
+                        fix_result = agent_orchestrator.fix_code(
+                            code, 
+                            review_result.get("issues", []),
+                            canonical_model
+                        )
+                        code = fix_result.get("fixed_code", code)
+                        logger.info("Code auto-fixed based on review")
+            except Exception as e:
+                logger.warning(f"Code review failed: {str(e)}")
+        
         logger.info("PySpark code generated successfully")
         
         return GenerateResponse(
@@ -1215,4 +1233,134 @@ async def get_graph_statistics():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Statistics query failed: {str(e)}"
+        )
+
+
+@router.get("/graph/mappings/{mapping_name}/impact")
+async def get_impact_analysis(mapping_name: str):
+    """Get comprehensive impact analysis for a mapping.
+    
+    Args:
+        mapping_name: Mapping name to analyze
+        
+    Returns:
+        Impact analysis results
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        impact = graph_queries.get_impact_analysis(mapping_name)
+        
+        return {
+            "success": True,
+            "mapping": mapping_name,
+            "impact_analysis": impact
+        }
+    except Exception as e:
+        logger.error(f"Impact analysis failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Impact analysis failed: {str(e)}"
+        )
+
+
+@router.get("/graph/patterns/{pattern_type}")
+async def find_pattern(pattern_type: str, pattern_value: str):
+    """Find mappings using a specific pattern.
+    
+    Args:
+        pattern_type: Type of pattern (expression, transformation, table)
+        pattern_value: Pattern value to search for
+        
+    Returns:
+        List of mappings using the pattern
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        mappings = graph_queries.find_pattern_across_mappings(pattern_type, pattern_value)
+        
+        return {
+            "success": True,
+            "pattern_type": pattern_type,
+            "pattern_value": pattern_value,
+            "mappings": mappings,
+            "count": len(mappings)
+        }
+    except Exception as e:
+        logger.error(f"Pattern search failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Pattern search failed: {str(e)}"
+        )
+
+
+@router.get("/graph/migration/readiness")
+async def get_migration_readiness():
+    """Get migration readiness assessment for all mappings.
+    
+    Returns:
+        List of mappings with readiness scores
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        readiness = graph_queries.get_migration_readiness()
+        
+        return {
+            "success": True,
+            "readiness_assessment": readiness,
+            "count": len(readiness)
+        }
+    except Exception as e:
+        logger.error(f"Migration readiness assessment failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Migration readiness assessment failed: {str(e)}"
+        )
+
+
+@router.post("/review/code")
+async def review_code(request: Dict[str, Any]):
+    """Review generated code for issues and improvements.
+    
+    Args:
+        request: Dictionary with 'code' and optional 'canonical_model'
+        
+    Returns:
+        Review results
+    """
+    try:
+        code = request.get("code", "")
+        canonical_model = request.get("canonical_model")
+        
+        if not code:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Code is required"
+            )
+        
+        review = agent_orchestrator.review_code(code, canonical_model)
+        
+        return {
+            "success": True,
+            "review": review
+        }
+    except Exception as e:
+        logger.error(f"Code review failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Code review failed: {str(e)}"
         )
