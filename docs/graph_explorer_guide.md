@@ -106,8 +106,11 @@ Before you can explore mappings in the UI, you need to parse and save mappings t
 
 1. Click the **"Upload & Parse"** tab in the UI
 2. Upload your Informatica XML file
-3. Click "Parse Mapping" with "Enhance Model" enabled
-4. The mapping will be automatically saved to Neo4j
+3. After upload, you'll see a checkbox: **"Enhance Model (AI enhancement + save to Neo4j)"**
+   - ✅ **Checked** (default): Enables AI enhancement and saves to Neo4j
+   - ☐ **Unchecked**: Parses only, does not save to Neo4j
+4. Click **"Parse Mapping"** button
+5. If "Enhance Model" is checked, the mapping will be automatically saved to Neo4j
 
 ---
 
