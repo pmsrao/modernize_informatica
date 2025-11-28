@@ -1,7 +1,7 @@
 """Agent Orchestrator
 Coordinates multiple AI agents with error handling and parallel execution.
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import sys
 from pathlib import Path
