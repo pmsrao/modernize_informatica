@@ -1333,6 +1333,207 @@ async def get_migration_readiness():
         )
 
 
+@router.get("/graph/mappings")
+async def list_all_mappings():
+    """List all mappings in the graph with metadata.
+    
+    Returns:
+        List of mappings with metadata
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        with graph_store.driver.session() as session:
+            result = session.run("""
+                MATCH (m:Mapping)
+                OPTIONAL MATCH (m)-[:HAS_SOURCE]->(s:Source)
+                OPTIONAL MATCH (m)-[:HAS_TARGET]->(t:Target)
+                OPTIONAL MATCH (m)-[:HAS_TRANSFORMATION]->(trans:Transformation)
+                RETURN m.name as name,
+                       m.mapping_name as mapping_name,
+                       m.complexity as complexity,
+                       count(DISTINCT s) as source_count,
+                       count(DISTINCT t) as target_count,
+                       count(DISTINCT trans) as transformation_count
+                ORDER BY m.name
+            """)
+            
+            mappings = []
+            for record in result:
+                mappings.append({
+                    "name": record["name"],
+                    "mapping_name": record["mapping_name"],
+                    "complexity": record["complexity"],
+                    "source_count": record["source_count"],
+                    "target_count": record["target_count"],
+                    "transformation_count": record["transformation_count"]
+                })
+        
+        return {
+            "success": True,
+            "mappings": mappings,
+            "count": len(mappings)
+        }
+    except Exception as e:
+        logger.error(f"List mappings failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"List mappings failed: {str(e)}"
+        )
+
+
+@router.get("/graph/mappings/{mapping_name}/structure")
+async def get_mapping_structure(mapping_name: str):
+    """Get complete mapping structure for visualization.
+    
+    Args:
+        mapping_name: Mapping name
+        
+    Returns:
+        Mapping structure with nodes and edges for graph visualization
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        # Load canonical model from graph
+        canonical_model = graph_store.load_mapping(mapping_name)
+        if not canonical_model:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Mapping not found: {mapping_name}"
+            )
+        
+        # Build graph structure for visualization
+        nodes = []
+        edges = []
+        
+        # Add mapping node
+        nodes.append({
+            "id": f"mapping_{mapping_name}",
+            "type": "mapping",
+            "label": canonical_model.get("mapping_name", mapping_name),
+            "data": {
+                "name": mapping_name,
+                "complexity": canonical_model.get("complexity", "unknown"),
+                "type": "mapping"
+            }
+        })
+        
+        # Add source nodes
+        sources = canonical_model.get("sources", [])
+        for idx, source in enumerate(sources):
+            source_id = f"source_{mapping_name}_{idx}"
+            nodes.append({
+                "id": source_id,
+                "type": "source",
+                "label": source.get("name", f"Source {idx}"),
+                "data": {
+                    "name": source.get("name"),
+                    "type": "source",
+                    "table": source.get("table", {}).get("name") if isinstance(source.get("table"), dict) else None,
+                    "database": source.get("table", {}).get("database") if isinstance(source.get("table"), dict) else None
+                }
+            })
+            edges.append({
+                "id": f"edge_{mapping_name}_to_{source_id}",
+                "source": f"mapping_{mapping_name}",
+                "target": source_id,
+                "type": "has_source",
+                "label": "HAS_SOURCE"
+            })
+        
+        # Add target nodes
+        targets = canonical_model.get("targets", [])
+        for idx, target in enumerate(targets):
+            target_id = f"target_{mapping_name}_{idx}"
+            nodes.append({
+                "id": target_id,
+                "type": "target",
+                "label": target.get("name", f"Target {idx}"),
+                "data": {
+                    "name": target.get("name"),
+                    "type": "target",
+                    "table": target.get("table", {}).get("name") if isinstance(target.get("table"), dict) else None,
+                    "database": target.get("table", {}).get("database") if isinstance(target.get("table"), dict) else None
+                }
+            })
+            edges.append({
+                "id": f"edge_{mapping_name}_to_{target_id}",
+                "source": f"mapping_{mapping_name}",
+                "target": target_id,
+                "type": "has_target",
+                "label": "HAS_TARGET"
+            })
+        
+        # Add transformation nodes
+        transformations = canonical_model.get("transformations", [])
+        for idx, trans in enumerate(transformations):
+            trans_id = f"trans_{mapping_name}_{idx}"
+            nodes.append({
+                "id": trans_id,
+                "type": "transformation",
+                "label": trans.get("name", f"Trans {idx}"),
+                "data": {
+                    "name": trans.get("name"),
+                    "type": trans.get("type", "unknown"),
+                    "transformation_type": trans.get("type", "unknown")
+                }
+            })
+            edges.append({
+                "id": f"edge_{mapping_name}_to_{trans_id}",
+                "source": f"mapping_{mapping_name}",
+                "target": trans_id,
+                "type": "has_transformation",
+                "label": "HAS_TRANSFORMATION"
+            })
+            
+            # Add flows from sources to transformations
+            for source_idx, source in enumerate(sources):
+                source_id = f"source_{mapping_name}_{source_idx}"
+                edges.append({
+                    "id": f"edge_{source_id}_to_{trans_id}",
+                    "source": source_id,
+                    "target": trans_id,
+                    "type": "flows_to",
+                    "label": "FLOWS_TO"
+                })
+            
+            # Add flows from transformations to targets
+            for target_idx, target in enumerate(targets):
+                target_id = f"target_{mapping_name}_{target_idx}"
+                edges.append({
+                    "id": f"edge_{trans_id}_to_{target_id}",
+                    "source": trans_id,
+                    "target": target_id,
+                    "type": "flows_to",
+                    "label": "FLOWS_TO"
+                })
+        
+        return {
+            "success": True,
+            "mapping": mapping_name,
+            "graph": {
+                "nodes": nodes,
+                "edges": edges
+            },
+            "canonical_model": canonical_model
+        }
+    except Exception as e:
+        logger.error(f"Get mapping structure failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Get mapping structure failed: {str(e)}"
+        )
+
+
 @router.post("/review/code")
 async def review_code(request: Dict[str, Any]):
     """Review generated code for issues and improvements.

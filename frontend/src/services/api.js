@@ -252,6 +252,50 @@ class APIClient {
   async healthCheck() {
     return this.request('/health');
   }
+
+  // Graph Query Endpoints
+  async listMappings() {
+    return this.request('/graph/mappings');
+  }
+
+  async getMappingStructure(mappingName) {
+    return this.request(`/graph/mappings/${mappingName}/structure`);
+  }
+
+  async getMappingDependencies(mappingName) {
+    return this.request(`/graph/mappings/${mappingName}/dependencies`);
+  }
+
+  async getMappingImpact(mappingName) {
+    return this.request(`/graph/mappings/${mappingName}/impact`);
+  }
+
+  async getGraphStatistics() {
+    return this.request('/graph/statistics');
+  }
+
+  async findMappingsUsingTable(tableName, database = null) {
+    const params = database ? `?database=${database}` : '';
+    return this.request(`/graph/mappings/using-table/${tableName}${params}`);
+  }
+
+  async traceLineage(sourceTable, targetTable, database = null) {
+    const params = new URLSearchParams({ source_table: sourceTable, target_table: targetTable });
+    if (database) params.append('database', database);
+    return this.request(`/graph/lineage/trace?${params.toString()}`);
+  }
+
+  async getMigrationOrder() {
+    return this.request('/graph/migration/order');
+  }
+
+  async getMigrationReadiness() {
+    return this.request('/graph/migration/readiness');
+  }
+
+  async findPattern(patternType, patternValue) {
+    return this.request(`/graph/patterns/${patternType}?pattern_value=${encodeURIComponent(patternValue)}`);
+  }
 }
 
 // Export singleton instance

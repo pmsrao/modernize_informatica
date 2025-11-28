@@ -1,4 +1,3 @@
-
 {
   "name": "infa-modernizer-ui",
   "version": "0.1.0",
@@ -8,9 +7,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "axios": "^1.5.0",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
-    "axios": "^1.5.0"
+    "reactflow": "^11.11.4"
   },
   "devDependencies": {
     "vite": "^4.0.0"
