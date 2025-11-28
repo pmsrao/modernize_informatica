@@ -5,6 +5,7 @@ import ViewSpecPage from './ViewSpecPage.jsx'
 import LineagePage from './LineagePage.jsx'
 import GraphExplorerPage from './GraphExplorerPage.jsx'
 import FileBrowserPage from './FileBrowserPage.jsx'
+import HierarchyPage from './HierarchyPage.jsx'
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState('browser'); // 'browser', 'upload', 'spec', 'lineage', 'graph'
@@ -64,6 +65,12 @@ export default function App() {
           >
             Lineage
           </button>
+          <button 
+            style={navButtonStyle(currentPage === 'hierarchy')}
+            onClick={() => setCurrentPage('hierarchy')}
+          >
+            Hierarchy
+          </button>
         </div>
       </div>
 
@@ -73,6 +80,7 @@ export default function App() {
         {currentPage === 'upload' && <UploadPage />}
         {currentPage === 'spec' && <ViewSpecPage />}
         {currentPage === 'lineage' && <LineagePage />}
+        {currentPage === 'hierarchy' && <HierarchyPage />}
       </div>
     </div>
   )

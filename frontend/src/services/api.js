@@ -320,6 +320,11 @@ class APIClient {
     const params = fileType ? `?file_type=${fileType}` : '';
     return this.request(`/api/v1/files${params}`);
   }
+
+  async getHierarchy(fileIds = null) {
+    const params = fileIds ? `?file_ids=${fileIds.join(',')}` : '';
+    return this.request(`/api/v1/hierarchy${params}`);
+  }
 }
 
 // Export singleton instance

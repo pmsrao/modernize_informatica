@@ -263,6 +263,40 @@ async def list_all_files(file_type: Optional[str] = None):
         )
 
 
+@router.get("/hierarchy")
+async def get_hierarchy(file_ids: Optional[str] = None):
+    """Get Informatica component hierarchy graph.
+    
+    Args:
+        file_ids: Optional comma-separated list of file IDs to include. If not provided, uses all files.
+        
+    Returns:
+        Hierarchy graph with nodes and edges
+    """
+    try:
+        from src.api.hierarchy_builder import HierarchyBuilder
+        
+        builder = HierarchyBuilder()
+        
+        # Parse file_ids if provided
+        file_id_list = None
+        if file_ids:
+            file_id_list = [fid.strip() for fid in file_ids.split(",") if fid.strip()]
+        
+        hierarchy = builder.build_hierarchy_from_files(file_id_list)
+        
+        return {
+            "success": True,
+            "hierarchy": hierarchy
+        }
+    except Exception as e:
+        logger.error(f"Hierarchy build failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Hierarchy build failed: {str(e)}"
+        )
+
+
 # ============================================================================
 # Parsing Endpoints
 # ============================================================================
