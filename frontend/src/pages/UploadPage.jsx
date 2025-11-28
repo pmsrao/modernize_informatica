@@ -6,6 +6,7 @@ export default function UploadPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
   const [error, setError] = useState(null);
+  const [enhanceModel, setEnhanceModel] = useState(true);
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -57,7 +58,14 @@ export default function UploadPage() {
     setError(null);
 
     try {
-      const result = await apiClient.parseMapping(uploadResult.file_id);
+      // Call parseMapping with enhance_model option
+      const result = await apiClient.request('/api/v1/parse/mapping', {
+        method: 'POST',
+        body: JSON.stringify({
+          file_id: uploadResult.file_id,
+          enhance_model: enhanceModel
+        })
+      });
       setUploadResult({ ...uploadResult, parsed: result });
     } catch (err) {
       setError(err.message || 'Parsing failed');
@@ -121,21 +129,36 @@ export default function UploadPage() {
           <p><strong>File Size:</strong> {(uploadResult.file_size / 1024).toFixed(2)} KB</p>
           <p><strong>File Type:</strong> {uploadResult.file_type}</p>
           
-          <button
-            onClick={handleParseMapping}
-            disabled={uploading || uploadResult.file_type !== 'mapping'}
-            style={{
-              marginTop: '10px',
-              padding: '8px 16px',
-              backgroundColor: '#28a745',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            Parse Mapping
-          </button>
+          {uploadResult.file_type === 'mapping' && (
+            <div style={{ marginTop: '15px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                <input
+                  type="checkbox"
+                  checked={enhanceModel}
+                  onChange={(e) => setEnhanceModel(e.target.checked)}
+                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: '14px', fontWeight: '500' }}>
+                  Enhance Model (AI enhancement + save to Neo4j)
+                </span>
+              </label>
+              <button
+                onClick={handleParseMapping}
+                disabled={uploading}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#28a745',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: uploading ? 'not-allowed' : 'pointer',
+                  opacity: uploading ? 0.6 : 1
+                }}
+              >
+                {uploading ? 'Parsing...' : 'Parse Mapping'}
+              </button>
+            </div>
+          )}
 
           {uploadResult.parsed && (
             <div style={{ marginTop: '15px' }}>
