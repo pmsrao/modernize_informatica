@@ -162,7 +162,7 @@ async def parse_mapping(request: ParseMappingRequest):
         if request.file_id:
             version_store.save(request.file_id, canonical_model)
         
-        logger.info(f"Mapping parsed successfully: {mapping_id}")
+        logger.info(f"Mapping parsed successfully: {mapping_name}")
         
         return ParseResponse(
             success=True,
