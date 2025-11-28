@@ -11,7 +11,8 @@ export default function LineagePage() {
 
   // Load file ID from localStorage
   useEffect(() => {
-    const storedFileId = localStorage.getItem('lastFileId');
+    // Try both possible keys
+    const storedFileId = localStorage.getItem('lastUploadedFileId') || localStorage.getItem('lastFileId');
     if (storedFileId) {
       setFileId(storedFileId);
     }
@@ -27,6 +28,21 @@ export default function LineagePage() {
     setError(null);
 
     try {
+      // First, get file info to check file type
+      let fileInfo = null;
+      try {
+        fileInfo = await apiClient.getFileInfo(fileId);
+      } catch (err) {
+        console.warn('Could not get file info:', err);
+      }
+
+      // Check if it's a workflow file
+      if (fileInfo && fileInfo.file_type && fileInfo.file_type !== 'workflow') {
+        setError(`File type is "${fileInfo.file_type}", but workflow is required. Please upload a workflow XML file.`);
+        setLoading(false);
+        return;
+      }
+
       // First, parse the workflow to get workflow data
       const parseResult = await apiClient.parseWorkflow(fileId);
       
@@ -40,10 +56,12 @@ export default function LineagePage() {
           setError(dagResult.message || 'Failed to build DAG');
         }
       } else {
-        setError('Failed to parse workflow');
+        const errorMsg = parseResult.message || parseResult.errors?.join(', ') || 'Failed to parse workflow';
+        setError(`Failed to parse workflow: ${errorMsg}`);
       }
     } catch (err) {
-      setError(err.message || 'Failed to load DAG');
+      const errorMessage = err.message || err.detail || 'Failed to load DAG';
+      setError(`Error: ${errorMessage}. Make sure the file is a workflow XML file.`);
       console.error('DAG loading error:', err);
     } finally {
       setLoading(false);
@@ -405,13 +423,19 @@ export default function LineagePage() {
 
       {error && (
         <div style={{
-          padding: '10px',
+          padding: '15px',
           background: '#ffebee',
           color: '#c62828',
           borderRadius: '4px',
-          marginBottom: '20px'
+          marginBottom: '20px',
+          border: '1px solid #ef5350'
         }}>
-          {error}
+          <strong>Error:</strong> {error}
+          <div style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
+            <strong>Note:</strong> The Lineage & DAG Viewer requires a <strong>workflow</strong> XML file, not a mapping file.
+            <br />
+            Please upload a workflow XML file using the "Upload & Parse" tab.
+          </div>
         </div>
       )}
 
