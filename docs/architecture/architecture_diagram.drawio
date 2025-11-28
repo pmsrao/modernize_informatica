@@ -1,119 +1,168 @@
 <mxfile host="app.diagrams.net">
     <diagram name="Architecture" id="arch1">
-        <mxGraphModel dx="1500" dy="1400" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="2800" math="0" shadow="0">
+        <mxGraphModel dx="1500" dy="1400" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2400" pageHeight="3200" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
-                <mxCell id="input" value="Informatica XMLs&#xa;(Mapping, Workflow, Session, Worklet)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;strokeColor=#999999;fontStyle=1" vertex="1" parent="1">
-                    <mxGeometry x="40" y="40" width="200" height="80" as="geometry"/>
+                
+                <mxCell id="part1_label" value="PART 1: Source to Canonical Form" style="text;html=1;strokeColor=#1976d2;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=16;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="40" y="20" width="400" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="parsers" value="Parsers&#xa;(Mapping, Workflow, Session, Worklet)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;strokeColor=#999999;fontStyle=1" vertex="1" parent="1">
-                    <mxGeometry x="280" y="40" width="180" height="80" as="geometry"/>
+                
+                <mxCell id="input" value="Informatica XMLs&#xa;(Mapping, Workflow, Session, Worklet)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1976d2;fontStyle=1;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="40" y="60" width="180" height="80" as="geometry"/>
                 </mxCell>
-                <mxCell id="normalizer" value="Normalizer&#xa;(Canonical Model Builder)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;strokeColor=#999999;fontStyle=1" vertex="1" parent="1">
-                    <mxGeometry x="500" y="40" width="200" height="80" as="geometry"/>
+                
+                <mxCell id="parsers" value="Parsers&#xa;(Mapping, Workflow, Session, Worklet)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1976d2;fontStyle=1;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="260" y="60" width="180" height="80" as="geometry"/>
                 </mxCell>
-                <mxCell id="ai_enhance" value="AI Enhancement Agents&#xa;(Model Enhancement, Validation)&#xa;Enhance Canonical Model" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontColor=#000000" vertex="1" parent="1">
-                    <mxGeometry x="740" y="40" width="220" height="80" as="geometry"/>
+                
+                <mxCell id="normalizer" value="Normalizer&#xa;(Canonical Model Builder)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1976d2;fontStyle=1;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="480" y="60" width="200" height="80" as="geometry"/>
                 </mxCell>
-                <mxCell id="version_store" value="Version Store&#xa;(JSON + Neo4j Graph)&#xa;Graph-First Mode" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1" vertex="1" parent="1">
-                    <mxGeometry x="500" y="160" width="200" height="80" as="geometry"/>
+                
+                <mxCell id="ai_enhance" value="AI Enhancement Agents&#xa;(Model Enhancement, Validation)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1976d2;fontStyle=1;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="720" y="60" width="220" height="80" as="geometry"/>
                 </mxCell>
-                <mxCell id="graph_store" value="Graph Store&#xa;(Neo4j)&#xa;Cross-Mapping Lineage&#xa;Impact Analysis" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1" vertex="1" parent="1">
-                    <mxGeometry x="280" y="160" width="180" height="100" as="geometry"/>
+                
+                <mxCell id="llm1" value="LLM Manager&#xa;(OpenAI, Azure, Local)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1976d2;fontStyle=1;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="980" y="60" width="200" height="80" as="geometry"/>
                 </mxCell>
-                <mxCell id="translator" value="Translators&#xa;(PySpark, SQL, Expression AST)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;strokeColor=#999999;fontStyle=1" vertex="1" parent="1">
-                    <mxGeometry x="1000" y="40" width="200" height="80" as="geometry"/>
+                
+                <mxCell id="canonical_label" value="Canonical Model Storage (Graph-First)" style="text;html=1;strokeColor=#388e3c;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=16;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="40" y="180" width="600" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="generator" value="Code Generators&#xa;(PySpark, DLT, SQL, Spec, Tests)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;strokeColor=#999999;fontStyle=1" vertex="1" parent="1">
-                    <mxGeometry x="1240" y="40" width="220" height="80" as="geometry"/>
+                
+                <mxCell id="graph_store" value="Graph Store - Neo4j&#xa;Canonical Model Repository&#xa;Cross-Mapping Lineage&#xa;Impact Analysis&#xa;Pattern Discovery" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#388e3c;fontStyle=1;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="200" y="220" width="280" height="120" as="geometry"/>
                 </mxCell>
-                <mxCell id="ai_review" value="AI Review Agents&#xa;(Code Fix, Risk Assessment)&#xa;Review Generated Code" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1" vertex="1" parent="1">
-                    <mxGeometry x="1480" y="40" width="220" height="80" as="geometry"/>
+                
+                <mxCell id="version_store" value="Version Store&#xa;(JSON Export&#xa;Backup/Compatibility)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#388e3c;fontStyle=1;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="520" y="240" width="200" height="80" as="geometry"/>
                 </mxCell>
-                <mxCell id="api" value="REST API&#xa;(FastAPI)&#xa;+ Graph Query Endpoints" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;strokeColor=#999999;fontStyle=1" vertex="1" parent="1">
-                    <mxGeometry x="740" y="160" width="200" height="80" as="geometry"/>
+                
+                <mxCell id="part2_label" value="PART 2: Canonical Form to Target Stack" style="text;html=1;strokeColor=#f57c00;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=16;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="40" y="380" width="500" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="frontend" value="Frontend UI&#xa;(React + Vite)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;strokeColor=#999999;fontStyle=1" vertex="1" parent="1">
-                    <mxGeometry x="740" y="280" width="200" height="60" as="geometry"/>
+                
+                <mxCell id="translator" value="Translators&#xa;(PySpark, SQL, Expression AST)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#f57c00;fontStyle=1;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="40" y="420" width="200" height="80" as="geometry"/>
                 </mxCell>
-                <mxCell id="ai_llm" value="AI &amp; LLM Layer&#xa;(OpenAI, Azure, Local)&#xa;LLM Manager" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1" vertex="1" parent="1">
-                    <mxGeometry x="1480" y="160" width="220" height="80" as="geometry"/>
+                
+                <mxCell id="generator" value="Code Generators&#xa;(PySpark, DLT, SQL, Spec, Tests)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#f57c00;fontStyle=1;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="280" y="420" width="220" height="80" as="geometry"/>
                 </mxCell>
-                <mxCell id="dag" value="DAG Builder&#xa;(Topological Sort, Cycle Detection)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;strokeColor=#999999;fontStyle=1" vertex="1" parent="1">
-                    <mxGeometry x="40" y="160" width="180" height="80" as="geometry"/>
+                
+                <mxCell id="ai_review" value="AI Review Agents&#xa;(Code Fix, Risk Assessment)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#f57c00;fontStyle=1;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="540" y="420" width="220" height="80" as="geometry"/>
                 </mxCell>
-                <mxCell id="services" value="Supporting Services&#xa;(Connectors, Catalog, Notifications)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1" vertex="1" parent="1">
-                    <mxGeometry x="1000" y="160" width="240" height="80" as="geometry"/>
+                
+                <mxCell id="llm2" value="LLM Manager&#xa;(OpenAI, Azure, Local)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#f57c00;fontStyle=1;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="800" y="420" width="200" height="80" as="geometry"/>
                 </mxCell>
-                <mxCell id="e1" value="" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2" edge="1" parent="1" source="input" target="parsers">
+                
+                <mxCell id="target_label" value="Target Platforms" style="text;html=1;strokeColor=#7b1fa2;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=14;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="40" y="540" width="200" height="30" as="geometry"/>
+                </mxCell>
+                
+                <mxCell id="databricks" value="Databricks&#xa;(PySpark, DLT, SQL)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#7b1fa2;fontStyle=1;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="40" y="580" width="200" height="80" as="geometry"/>
+                </mxCell>
+                
+                <mxCell id="future" value="Future Platforms&#xa;(Extensible Architecture)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#7b1fa2;fontStyle=1;fontColor=#000000;dashed=1" vertex="1" parent="1">
+                    <mxGeometry x="280" y="580" width="220" height="80" as="geometry"/>
+                </mxCell>
+                
+                <mxCell id="api" value="REST API&#xa;(FastAPI)&#xa;+ Graph Query Endpoints" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eceff1;strokeColor=#455a64;fontStyle=1;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="1040" y="220" width="200" height="80" as="geometry"/>
+                </mxCell>
+                
+                <mxCell id="frontend" value="Frontend UI&#xa;(React + Vite)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eceff1;strokeColor=#455a64;fontStyle=1;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="1040" y="340" width="200" height="60" as="geometry"/>
+                </mxCell>
+                
+                <mxCell id="dag" value="DAG Builder&#xa;(Topological Sort, Cycle Detection)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#757575;fontStyle=1;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="1300" y="60" width="200" height="80" as="geometry"/>
+                </mxCell>
+                
+                <mxCell id="services" value="Supporting Services&#xa;(Connectors, Catalog, Notifications)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#757575;fontStyle=1;fontColor=#000000" vertex="1" parent="1">
+                    <mxGeometry x="1300" y="180" width="240" height="80" as="geometry"/>
+                </mxCell>
+                
+                <mxCell id="e1" value="" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#1976d2" edge="1" parent="1" source="input" target="parsers">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e2" value="" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2" edge="1" parent="1" source="parsers" target="normalizer">
+                
+                <mxCell id="e2" value="" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#1976d2" edge="1" parent="1" source="parsers" target="normalizer">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e3" value="Canonical Model" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#d79b00" edge="1" parent="1" source="normalizer" target="ai_enhance">
+                
+                <mxCell id="e3" value="Canonical Model" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#1976d2" edge="1" parent="1" source="normalizer" target="ai_enhance">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e4" value="Enhanced Model" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#d79b00" edge="1" parent="1" source="ai_enhance" target="translator">
+                
+                <mxCell id="e4" value="LLM" style="endArrow=classic;html=1;rounded=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;dashed=1;strokeColor=#1976d2" edge="1" parent="1" source="llm1" target="ai_enhance">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e5" value="" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2" edge="1" parent="1" source="translator" target="generator">
+                
+                <mxCell id="e5" value="Enhanced Model" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#388e3c" edge="1" parent="1" source="ai_enhance" target="graph_store">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e6" value="Generated Code" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#d79b00" edge="1" parent="1" source="generator" target="ai_review">
+                
+                <mxCell id="e6" value="Dual-Write" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;dashed=1;strokeColor=#388e3c" edge="1" parent="1" source="graph_store" target="version_store">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e7" value="Save" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;dashed=1;strokeColor=#82b366" edge="1" parent="1" source="ai_enhance" target="version_store">
+                
+                <mxCell id="e7" value="Load Model" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#f57c00" edge="1" parent="1" source="graph_store" target="translator">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e8" value="Dual-Write" style="endArrow=classic;html=1;rounded=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;dashed=1;strokeColor=#82b366" edge="1" parent="1" source="version_store" target="graph_store">
+                
+                <mxCell id="e8" value="" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#f57c00" edge="1" parent="1" source="translator" target="generator">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e9" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;dashed=1" edge="1" parent="1" source="version_store" target="api">
+                
+                <mxCell id="e9" value="Generated Code" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#f57c00" edge="1" parent="1" source="generator" target="ai_review">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e10" value="Graph Queries" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;dashed=1;strokeColor=#82b366" edge="1" parent="1" source="graph_store" target="api">
+                
+                <mxCell id="e10" value="LLM" style="endArrow=classic;html=1;rounded=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;dashed=1;strokeColor=#f57c00" edge="1" parent="1" source="llm2" target="ai_review">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e11" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2" edge="1" parent="1" source="api" target="frontend">
+                
+                <mxCell id="e11" value="Final Code" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#7b1fa2" edge="1" parent="1" source="ai_review" target="databricks">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e12" value="" style="endArrow=classic;html=1;rounded=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;dashed=1" edge="1" parent="1" source="normalizer" target="dag">
+                
+                <mxCell id="e12" value="Extensible" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;dashed=1;strokeColor=#7b1fa2" edge="1" parent="1" source="generator" target="future">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e13" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;dashed=1" edge="1" parent="1" source="dag" target="api">
+                
+                <mxCell id="e13" value="Graph Queries" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;dashed=1;strokeColor=#388e3c" edge="1" parent="1" source="graph_store" target="api">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e14" value="LLM" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;dashed=1;strokeColor=#9673a6" edge="1" parent="1" source="ai_llm" target="ai_enhance">
+                
+                <mxCell id="e14" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2" edge="1" parent="1" source="api" target="frontend">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e15" value="LLM" style="endArrow=classic;html=1;rounded=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;dashed=1;strokeColor=#9673a6" edge="1" parent="1" source="ai_llm" target="ai_review">
+                
+                <mxCell id="e15" value="" style="endArrow=classic;html=1;rounded=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;dashed=1" edge="1" parent="1" source="normalizer" target="dag">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e16" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;dashed=1" edge="1" parent="1" source="ai_review" target="api">
+                
+                <mxCell id="e16" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;dashed=1" edge="1" parent="1" source="dag" target="api">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
+                
                 <mxCell id="e17" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;dashed=1" edge="1" parent="1" source="generator" target="api">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e18" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;dashed=1" edge="1" parent="1" source="services" target="api">
+                
+                <mxCell id="e18" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;dashed=1" edge="1" parent="1" source="ai_review" target="api">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="legend" value="Legend:" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1" vertex="1" parent="1">
-                    <mxGeometry x="40" y="400" width="100" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="legend_deterministic" value="Deterministic Components" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;strokeColor=#999999;fontColor=#FFFFFF" vertex="1" parent="1">
-                    <mxGeometry x="40" y="440" width="180" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="legend_ai" value="AI/LLM Components" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontColor=#000000" vertex="1" parent="1">
-                    <mxGeometry x="240" y="440" width="180" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="legend_graph" value="Graph Storage" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#000000" vertex="1" parent="1">
-                    <mxGeometry x="440" y="440" width="180" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="legend_flow" value="Main Flow" style="text;html=1;strokeColor=#d79b00;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1" vertex="1" parent="1">
-                    <mxGeometry x="640" y="440" width="100" height="30" as="geometry"/>
+                
+                <mxCell id="e19" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;dashed=1" edge="1" parent="1" source="services" target="api">
+                    <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
             </root>
         </mxGraphModel>

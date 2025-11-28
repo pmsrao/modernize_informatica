@@ -1,72 +1,77 @@
 graph TB
-    subgraph "Input Layer"
+    subgraph "PART 1: Source to Canonical Form"
+        direction LR
         XML[Informatica XMLs<br/>Mapping, Workflow, Session, Worklet]
-    end
-    
-    subgraph "Deterministic Processing Layer"
         Parser[Parsers<br/>Mapping, Workflow, Session, Worklet]
         Normalizer[Normalizer<br/>Canonical Model Builder]
+        AIEnhance[AI Enhancement Agents<br/>Model Enhancement, Validation]
+        LLM1[LLM Manager<br/>OpenAI, Azure, Local]
+        
+        XML -->|Parse| Parser
+        Parser -->|Build Model| Normalizer
+        Normalizer -->|Canonical Model| AIEnhance
+        LLM1 -->|LLM Services| AIEnhance
+    end
+    
+    subgraph "Canonical Model Storage"
+        GraphStore[Graph Store - Neo4j<br/>Canonical Model Repository<br/>Cross-Mapping Lineage<br/>Impact Analysis<br/>Pattern Discovery]
+        VersionStore[Version Store<br/>JSON Export<br/>Backup/Compatibility]
+        
+        AIEnhance -->|Save Enhanced Model| GraphStore
+        GraphStore -->|Dual-Write| VersionStore
+    end
+    
+    subgraph "PART 2: Canonical Form to Target Stack"
+        direction LR
         Translator[Translators<br/>PySpark, SQL, Expression AST]
         Generator[Code Generators<br/>PySpark, DLT, SQL, Spec, Tests]
-        DAG[DAG Builder<br/>Topological Sort, Cycle Detection]
+        AIReview[AI Review Agents<br/>Code Fix, Risk Assessment]
+        LLM2[LLM Manager<br/>OpenAI, Azure, Local]
+        
+        GraphStore -->|Load Enhanced Model| Translator
+        Translator -->|Translate| Generator
+        Generator -->|Generated Code| AIReview
+        LLM2 -->|LLM Services| AIReview
     end
     
-    subgraph "AI Enhancement Layer"
-        AIEnhance[AI Enhancement Agents<br/>Model Enhancement, Validation<br/>Enhance Canonical Model]
-        AIReview[AI Review Agents<br/>Code Fix, Risk Assessment<br/>Review Generated Code]
-        LLM[AI & LLM Layer<br/>OpenAI, Azure, Local<br/>LLM Manager]
-    end
-    
-    subgraph "Storage Layer"
-        VersionStore[Version Store<br/>JSON + Neo4j Graph<br/>Graph-First Mode]
-        GraphStore[Graph Store<br/>Neo4j<br/>Cross-Mapping Lineage<br/>Impact Analysis]
+    subgraph "Target Platforms"
+        Databricks[Databricks<br/>PySpark, DLT, SQL]
+        Future[Future Platforms<br/>Extensible Architecture]
+        
+        AIReview -->|Final Code| Databricks
+        Generator -.->|Extensible| Future
     end
     
     subgraph "API & Frontend Layer"
         API[REST API<br/>FastAPI<br/>+ Graph Query Endpoints]
         Frontend[Frontend UI<br/>React + Vite]
+        
+        GraphStore -->|Graph Queries| API
+        Generator -->|Code| API
+        AIReview -->|Reviewed Code| API
+        API -->|Serve| Frontend
     end
     
     subgraph "Supporting Services"
+        DAG[DAG Builder<br/>Topological Sort, Cycle Detection]
         Services[Supporting Services<br/>Connectors, Catalog, Notifications]
+        
+        Normalizer -->|Workflow Data| DAG
+        DAG -->|DAG Data| API
+        Services -->|Services| API
     end
     
-    %% Main Flow
-    XML -->|Parse| Parser
-    Parser -->|Build Model| Normalizer
-    Normalizer -->|Canonical Model| AIEnhance
-    AIEnhance -->|Enhanced Model| Translator
-    Translator -->|Translate| Generator
-    Generator -->|Generated Code| AIReview
-    
-    %% Storage Flow
-    AIEnhance -->|Save| VersionStore
-    VersionStore -->|Dual-Write| GraphStore
-    VersionStore -->|Read| API
-    GraphStore -->|Graph Queries| API
-    
-    %% API Flow
-    API -->|Serve| Frontend
-    Generator -->|Code| API
-    AIReview -->|Reviewed Code| API
-    DAG -->|DAG Data| API
-    Services -->|Services| API
-    
-    %% DAG Flow
-    Normalizer -->|Workflow Data| DAG
-    
-    %% AI Flow
-    LLM -->|LLM Services| AIEnhance
-    LLM -->|LLM Services| AIReview
-    
     %% Styling
-    classDef deterministic fill:#999999,stroke:#666666,stroke-width:2px,color:#fff
-    classDef ai fill:#e1d5e7,stroke:#9673a6,stroke-width:2px,color:#000
-    classDef graph fill:#d5e8d4,stroke:#82b366,stroke-width:2px,color:#000
-    classDef api fill:#999999,stroke:#666666,stroke-width:2px,color:#fff
+    classDef part1 fill:#e3f2fd,stroke:#1976d2,stroke-width:3px,color:#000000
+    classDef canonical fill:#c8e6c9,stroke:#388e3c,stroke-width:3px,color:#000000
+    classDef part2 fill:#fff3e0,stroke:#f57c00,stroke-width:3px,color:#000000
+    classDef target fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#000000
+    classDef api fill:#eceff1,stroke:#455a64,stroke-width:2px,color:#000000
+    classDef support fill:#fafafa,stroke:#757575,stroke-width:2px,color:#000000
     
-    class Parser,Normalizer,Translator,Generator,DAG,Services deterministic
-    class AIEnhance,AIReview,LLM ai
-    class VersionStore,GraphStore graph
+    class XML,Parser,Normalizer,AIEnhance,LLM1 part1
+    class GraphStore,VersionStore canonical
+    class Translator,Generator,AIReview,LLM2 part2
+    class Databricks,Future target
     class API,Frontend api
-
+    class DAG,Services support
