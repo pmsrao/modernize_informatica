@@ -8,6 +8,10 @@ export default function LineagePage() {
   const [fileId, setFileId] = useState(null);
   const [visualizationFormat, setVisualizationFormat] = useState('json');
   const [selectedNode, setSelectedNode] = useState(null);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [selectedFileInfo, setSelectedFileInfo] = useState(null);
+  const [inputMode, setInputMode] = useState('select'); // 'select' or 'manual'
 
   // Load file ID from localStorage
   useEffect(() => {
@@ -15,8 +19,47 @@ export default function LineagePage() {
     const storedFileId = localStorage.getItem('lastUploadedFileId') || localStorage.getItem('lastFileId');
     if (storedFileId) {
       setFileId(storedFileId);
+      setInputMode('manual');
     }
   }, []);
+
+  useEffect(() => {
+    loadUploadedFiles();
+  }, []);
+
+  useEffect(() => {
+    if (fileId && inputMode === 'select') {
+      loadFileInfo(fileId);
+    }
+  }, [fileId, inputMode]);
+
+  const loadUploadedFiles = async () => {
+    setLoadingFiles(true);
+    try {
+      const result = await apiClient.listAllFiles('workflow');
+      if (result.success) {
+        setUploadedFiles(result.files || []);
+      }
+    } catch (err) {
+      console.error('Error loading files:', err);
+    } finally {
+      setLoadingFiles(false);
+    }
+  };
+
+  const loadFileInfo = async (fileId) => {
+    try {
+      const fileInfo = await apiClient.getFileInfo(fileId);
+      setSelectedFileInfo(fileInfo);
+      if (fileInfo.file_type !== 'workflow') {
+        setError(`⚠️ This file is a "${fileInfo.file_type}", but Lineage & DAG Viewer requires a "workflow" file.`);
+      } else {
+        setError(null);
+      }
+    } catch (err) {
+      console.error('Error loading file info:', err);
+    }
+  };
 
   const loadDAG = async () => {
     if (!fileId) {
@@ -361,36 +404,171 @@ export default function LineagePage() {
     }
   };
 
+  const getFileTypeColor = (type) => {
+    return type === 'workflow' ? '#50C878' : '#FF6B6B';
+  };
+
   return (
-    <div style={{ padding: '20px' }}>
-      <h2>Lineage & DAG Viewer</h2>
-      
-      <div style={{ marginBottom: '20px' }}>
-        <div style={{ marginBottom: '10px' }}>
-          <label style={{ marginRight: '10px' }}>File ID:</label>
-          <input
-            type="text"
-            value={fileId || ''}
-            onChange={(e) => setFileId(e.target.value)}
-            placeholder="Enter file ID or upload a file"
-            style={{ padding: '5px', width: '300px', marginRight: '10px' }}
-          />
+    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={{ marginBottom: '20px', borderBottom: '2px solid #ddd', paddingBottom: '15px' }}>
+        <h2 style={{ margin: 0, color: '#333' }}>Lineage & DAG Viewer</h2>
+        <p style={{ margin: '5px 0', color: '#666', fontSize: '14px' }}>
+          Visualize workflow execution graphs and data lineage. <strong>Requires a workflow XML file.</strong>
+        </p>
+      </div>
+
+      {/* File Selection */}
+      <div style={{ 
+        marginBottom: '20px', 
+        padding: '20px', 
+        background: '#f5f5f5', 
+        borderRadius: '8px',
+        border: '1px solid #ddd'
+      }}>
+        <div style={{ marginBottom: '15px', display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button
+            onClick={() => setInputMode('select')}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: inputMode === 'select' ? '#4A90E2' : '#f5f5f5',
+              color: inputMode === 'select' ? 'white' : '#333',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: inputMode === 'select' ? 'bold' : 'normal'
+            }}
+          >
+            📁 Select from Uploaded Workflows
+          </button>
+          <button
+            onClick={() => setInputMode('manual')}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: inputMode === 'manual' ? '#4A90E2' : '#f5f5f5',
+              color: inputMode === 'manual' ? 'white' : '#333',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: inputMode === 'manual' ? 'bold' : 'normal'
+            }}
+          >
+            ✏️ Enter File ID Manually
+          </button>
+        </div>
+
+        {inputMode === 'select' && (
+          <div>
+            <label style={{ display: 'block', marginBottom: '10px', fontWeight: 'bold' }}>
+              Select Workflow File:
+            </label>
+            {loadingFiles ? (
+              <div style={{ padding: '10px', textAlign: 'center' }}>Loading workflow files...</div>
+            ) : uploadedFiles.length === 0 ? (
+              <div style={{ padding: '15px', background: '#fff3cd', borderRadius: '4px', color: '#856404' }}>
+                No workflow files found. Upload workflow files in the File Browser or Upload & Parse tab.
+              </div>
+            ) : (
+              <select
+                value={fileId || ''}
+                onChange={(e) => {
+                  setFileId(e.target.value);
+                  setDagData(null);
+                  setError(null);
+                }}
+                style={{
+                  padding: '10px',
+                  width: '100%',
+                  maxWidth: '600px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="">-- Select a workflow file --</option>
+                {uploadedFiles.map((f) => (
+                  <option key={f.file_id} value={f.file_id}>
+                    🔄 {f.filename} - {new Date(f.uploaded_at).toLocaleDateString()}
+                  </option>
+                ))}
+              </select>
+            )}
+            {selectedFileInfo && (
+              <div style={{ 
+                marginTop: '15px', 
+                padding: '10px', 
+                background: selectedFileInfo.file_type === 'workflow' ? '#d4edda' : '#f8d7da',
+                borderRadius: '4px',
+                border: `2px solid ${getFileTypeColor(selectedFileInfo.file_type)}`
+              }}>
+                <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>
+                  Selected: {selectedFileInfo.filename}
+                </div>
+                <div style={{ fontSize: '12px' }}>
+                  Type: <span style={{
+                    padding: '2px 8px',
+                    background: getFileTypeColor(selectedFileInfo.file_type),
+                    color: 'white',
+                    borderRadius: '3px',
+                    fontWeight: 'bold'
+                  }}>{selectedFileInfo.file_type}</span>
+                  {selectedFileInfo.file_type !== 'workflow' && (
+                    <span style={{ color: '#c62828', marginLeft: '10px' }}>
+                      ⚠️ This is not a workflow file!
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {inputMode === 'manual' && (
+          <div>
+            <label style={{ display: 'block', marginBottom: '10px', fontWeight: 'bold' }}>
+              File ID:
+            </label>
+            <input
+              type="text"
+              value={fileId || ''}
+              onChange={(e) => {
+                setFileId(e.target.value);
+                setDagData(null);
+                setError(null);
+                setSelectedFileInfo(null);
+              }}
+              placeholder="Enter workflow file ID"
+              style={{ 
+                padding: '10px', 
+                width: '100%', 
+                maxWidth: '600px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '14px'
+              }}
+            />
+          </div>
+        )}
+
+        <div style={{ marginTop: '15px' }}>
           <button
             onClick={loadDAG}
-            disabled={loading || !fileId}
+            disabled={loading || !fileId || (selectedFileInfo && selectedFileInfo.file_type !== 'workflow')}
             style={{
-              padding: '5px 15px',
-              background: loading ? '#ccc' : '#4CAF50',
+              padding: '10px 20px',
+              background: (loading || !fileId || (selectedFileInfo && selectedFileInfo.file_type !== 'workflow')) ? '#ccc' : '#4CAF50',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              marginRight: '10px'
+              cursor: (loading || !fileId || (selectedFileInfo && selectedFileInfo.file_type !== 'workflow')) ? 'not-allowed' : 'pointer',
+              fontWeight: 'bold',
+              fontSize: '14px'
             }}
           >
-            {loading ? 'Loading...' : 'Load DAG'}
+            {loading ? 'Loading DAG...' : '🔄 Load DAG'}
           </button>
         </div>
+      </div>
 
         <div style={{ marginTop: '10px' }}>
           <label style={{ marginRight: '10px' }}>Export Format:</label>
@@ -431,11 +609,13 @@ export default function LineagePage() {
           border: '1px solid #ef5350'
         }}>
           <strong>Error:</strong> {error}
-          <div style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
-            <strong>Note:</strong> The Lineage & DAG Viewer requires a <strong>workflow</strong> XML file, not a mapping file.
-            <br />
-            Please upload a workflow XML file using the "Upload & Parse" tab.
-          </div>
+          {!error.includes('⚠️') && (
+            <div style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
+              <strong>Note:</strong> The Lineage & DAG Viewer requires a <strong>workflow</strong> XML file.
+              <br />
+              Select a workflow file from the dropdown above, or upload one in the File Browser tab.
+            </div>
+          )}
         </div>
       )}
 

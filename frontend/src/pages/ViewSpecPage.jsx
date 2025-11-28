@@ -10,14 +10,54 @@ export default function ViewSpecPage() {
   const [sqlCode, setSqlCode] = useState(null);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('spec');
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [selectedFileInfo, setSelectedFileInfo] = useState(null);
+  const [inputMode, setInputMode] = useState('select'); // 'select' or 'manual'
 
   useEffect(() => {
+    loadUploadedFiles();
     // Try to get last uploaded file ID
     const lastFileId = localStorage.getItem('lastUploadedFileId');
     if (lastFileId) {
       setMappingId(lastFileId);
+      setInputMode('manual');
     }
   }, []);
+
+  useEffect(() => {
+    if (mappingId && inputMode === 'select') {
+      loadFileInfo(mappingId);
+    }
+  }, [mappingId, inputMode]);
+
+  const loadUploadedFiles = async () => {
+    setLoadingFiles(true);
+    try {
+      const result = await apiClient.listAllFiles('mapping');
+      if (result.success) {
+        setUploadedFiles(result.files || []);
+      }
+    } catch (err) {
+      console.error('Error loading files:', err);
+    } finally {
+      setLoadingFiles(false);
+    }
+  };
+
+  const loadFileInfo = async (fileId) => {
+    try {
+      const fileInfo = await apiClient.getFileInfo(fileId);
+      setSelectedFileInfo(fileInfo);
+      if (fileInfo.file_type !== 'mapping') {
+        setError(`⚠️ This file is a "${fileInfo.file_type}", but View Spec requires a "mapping" file.`);
+      } else {
+        setError(null);
+      }
+    } catch (err) {
+      console.error('Error loading file info:', err);
+    }
+  };
 
   const handleLoad = async () => {
     if (!mappingId) {
@@ -88,38 +128,176 @@ export default function ViewSpecPage() {
     URL.revokeObjectURL(url);
   };
 
+  const getFileTypeColor = (type) => {
+    return type === 'mapping' ? '#4A90E2' : '#FF6B6B';
+  };
+
   return (
     <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-      <h2>View Mapping Specification</h2>
-      
-      <div style={{ marginBottom: '20px' }}>
-        <input
-          type="text"
-          placeholder="Enter mapping ID or file ID"
-          value={mappingId}
-          onChange={(e) => setMappingId(e.target.value)}
-          style={{
-            padding: '8px',
-            width: '300px',
-            marginRight: '10px',
-            borderRadius: '4px',
-            border: '1px solid #ccc'
-          }}
-        />
-        <button
-          onClick={handleLoad}
-          disabled={loading}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: '#007bff',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: loading ? 'not-allowed' : 'pointer'
-          }}
-        >
-          {loading ? 'Loading...' : 'Load'}
-        </button>
+      <div style={{ marginBottom: '20px', borderBottom: '2px solid #ddd', paddingBottom: '15px' }}>
+        <h2 style={{ margin: 0, color: '#333' }}>View Mapping Specification</h2>
+        <p style={{ margin: '5px 0', color: '#666', fontSize: '14px' }}>
+          View mapping specifications and generated code. <strong>Requires a mapping XML file.</strong>
+        </p>
+      </div>
+
+      {/* File Selection */}
+      <div style={{ 
+        marginBottom: '20px', 
+        padding: '20px', 
+        background: '#f5f5f5', 
+        borderRadius: '8px',
+        border: '1px solid #ddd'
+      }}>
+        <div style={{ marginBottom: '15px', display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button
+            onClick={() => setInputMode('select')}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: inputMode === 'select' ? '#4A90E2' : '#f5f5f5',
+              color: inputMode === 'select' ? 'white' : '#333',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: inputMode === 'select' ? 'bold' : 'normal'
+            }}
+          >
+            📁 Select from Uploaded Mappings
+          </button>
+          <button
+            onClick={() => setInputMode('manual')}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: inputMode === 'manual' ? '#4A90E2' : '#f5f5f5',
+              color: inputMode === 'manual' ? 'white' : '#333',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: inputMode === 'manual' ? 'bold' : 'normal'
+            }}
+          >
+            ✏️ Enter Mapping ID Manually
+          </button>
+        </div>
+
+        {inputMode === 'select' && (
+          <div>
+            <label style={{ display: 'block', marginBottom: '10px', fontWeight: 'bold' }}>
+              Select Mapping File:
+            </label>
+            {loadingFiles ? (
+              <div style={{ padding: '10px', textAlign: 'center' }}>Loading mapping files...</div>
+            ) : uploadedFiles.length === 0 ? (
+              <div style={{ padding: '15px', background: '#fff3cd', borderRadius: '4px', color: '#856404' }}>
+                No mapping files found. Upload mapping files in the File Browser or Upload & Parse tab.
+              </div>
+            ) : (
+              <select
+                value={mappingId || ''}
+                onChange={(e) => {
+                  setMappingId(e.target.value);
+                  setSpec(null);
+                  setPysparkCode(null);
+                  setDltCode(null);
+                  setSqlCode(null);
+                  setError(null);
+                }}
+                style={{
+                  padding: '10px',
+                  width: '100%',
+                  maxWidth: '600px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="">-- Select a mapping file --</option>
+                {uploadedFiles.map((f) => (
+                  <option key={f.file_id} value={f.file_id}>
+                    📋 {f.filename} - {new Date(f.uploaded_at).toLocaleDateString()}
+                  </option>
+                ))}
+              </select>
+            )}
+            {selectedFileInfo && (
+              <div style={{ 
+                marginTop: '15px', 
+                padding: '10px', 
+                background: selectedFileInfo.file_type === 'mapping' ? '#d4edda' : '#f8d7da',
+                borderRadius: '4px',
+                border: `2px solid ${getFileTypeColor(selectedFileInfo.file_type)}`
+              }}>
+                <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>
+                  Selected: {selectedFileInfo.filename}
+                </div>
+                <div style={{ fontSize: '12px' }}>
+                  Type: <span style={{
+                    padding: '2px 8px',
+                    background: getFileTypeColor(selectedFileInfo.file_type),
+                    color: 'white',
+                    borderRadius: '3px',
+                    fontWeight: 'bold'
+                  }}>{selectedFileInfo.file_type}</span>
+                  {selectedFileInfo.file_type !== 'mapping' && (
+                    <span style={{ color: '#c62828', marginLeft: '10px' }}>
+                      ⚠️ This is not a mapping file!
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {inputMode === 'manual' && (
+          <div>
+            <label style={{ display: 'block', marginBottom: '10px', fontWeight: 'bold' }}>
+              Mapping ID or File ID:
+            </label>
+            <input
+              type="text"
+              placeholder="Enter mapping ID or file ID"
+              value={mappingId}
+              onChange={(e) => {
+                setMappingId(e.target.value);
+                setSpec(null);
+                setPysparkCode(null);
+                setDltCode(null);
+                setSqlCode(null);
+                setError(null);
+                setSelectedFileInfo(null);
+              }}
+              style={{
+                padding: '10px',
+                width: '100%',
+                maxWidth: '600px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '14px'
+              }}
+            />
+          </div>
+        )}
+
+        <div style={{ marginTop: '15px' }}>
+          <button
+            onClick={handleLoad}
+            disabled={loading || !mappingId || (selectedFileInfo && selectedFileInfo.file_type !== 'mapping')}
+            style={{
+              padding: '10px 20px',
+              backgroundColor: (loading || !mappingId || (selectedFileInfo && selectedFileInfo.file_type !== 'mapping')) ? '#ccc' : '#007bff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: (loading || !mappingId || (selectedFileInfo && selectedFileInfo.file_type !== 'mapping')) ? 'not-allowed' : 'pointer',
+              fontWeight: 'bold',
+              fontSize: '14px'
+            }}
+          >
+            {loading ? 'Loading...' : '📄 Load Specification'}
+          </button>
+        </div>
       </div>
 
       {error && (
