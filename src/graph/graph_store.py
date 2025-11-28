@@ -211,10 +211,10 @@ class GraphStore:
             
             if from_trans and to_trans:
                 tx.run("""
-                    MATCH (t1:Transformation {name: $from, mapping: $mapping})
-                    MATCH (t2:Transformation {name: $to, mapping: $mapping})
+                    MATCH (t1:Transformation {name: $from_trans, mapping: $mapping})
+                    MATCH (t2:Transformation {name: $to_trans, mapping: $mapping})
                     MERGE (t1)-[r:CONNECTS_TO {from_port: $from_port, to_port: $to_port}]->(t2)
-                """, from=from_trans, to=to_trans, mapping=mapping_name,
+                """, from_trans=from_trans, to_trans=to_trans, mapping=mapping_name,
                       from_port=conn.get("from_port", ""),
                       to_port=conn.get("to_port", ""))
     
