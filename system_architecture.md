@@ -1,10 +1,12 @@
 # System Architecture Overview
 
+> **Note**: For a comprehensive solution overview including graph-first architecture, see [`solution.md`](solution.md)
+
 ## a) Overview
 
 The **Informatica Modernization Accelerator** is an AI-augmented platform that reverse-engineers legacy Informatica ETL workloads and modernizes them into lakehouse-native architectures (PySpark, Delta Live Tables, SQL on Databricks/Spark).
 
-The system follows a **two-tier architecture**:
+The system follows a **two-part architecture with graph-first storage**:
 
 1. **Deterministic Layer**: Core parsing, normalization, translation, and code generation components that produce reliable, reproducible outputs
 2. **AI/LLM Layer**: Intelligent agents that provide explanations, analysis, suggestions, and reasoning capabilities

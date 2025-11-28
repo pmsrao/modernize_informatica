@@ -143,7 +143,7 @@ def test_ai_agents(mapping_file: str = "samples/simple/mapping_simple.xml"):
     print("\n📋 Summary:")
     print("   - Check the output above to verify each agent is working")
     print("   - If any agent failed, check LLM configuration and API keys")
-    print("   - See docs/testing_ai_agents.md for detailed testing guide")
+    print("   - See test_end_to_end.md for detailed testing guide")
 
 
 if __name__ == "__main__":

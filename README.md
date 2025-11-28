@@ -170,12 +170,14 @@ modernize_informatica/
 
 ## Documentation
 
-- [Architecture Overview](docs/architecture.md)
+- [Solution Overview](solution.md) - Complete solution architecture and design
+- [Roadmap](roadmap.md) - Implementation status and next steps
+- [End-to-End Testing Guide](test_end_to_end.md) - Comprehensive testing instructions
+- [System Architecture](system_architecture.md) - Detailed component architecture
 - [AI Agents Guide](docs/ai_agents.md)
 - [API Usage Guide](docs/guides/ai_agents_usage.md)
 - [Canonical Model](docs/canonical_model.md)
 - [Testing Guide](TESTING.md)
-- [Next Steps](docs/next_steps_ai_agents.md)
 
 ---
 

@@ -61,8 +61,14 @@ Main testing documentation with links to detailed guides.
 ### [Design Specification](design_spec.md)
 Formal architectural and component-centric design specification.
 
-### [Next Steps](guides/next_steps.md)
-Recommended next steps and priority areas for development.
+### [Solution Overview](../solution.md)
+Complete solution architecture including graph-first design and two-part architecture.
+
+### [Roadmap](../roadmap.md)
+Implementation status, completed items, and next steps.
+
+### [End-to-End Testing](../test_end_to_end.md)
+Comprehensive testing guide for complete flow validation.
 
 ### [Analysis Report](guides/analysis_report.md)
 Analysis of current implementation status and gaps.
@@ -77,9 +83,9 @@ Analysis of current implementation status and gaps.
 
 ## 🚀 Quick Links
 
-- **Getting Started**: See [Architecture](architecture.md) and [Parsing](parsing.md)
-- **Testing**: See [Testing Guide](../TESTING.md)
-- **Development**: See [Next Steps](guides/next_steps.md)
+- **Getting Started**: See [Solution Overview](../solution.md) and [Architecture](architecture.md)
+- **Testing**: See [End-to-End Testing Guide](../test_end_to_end.md)
+- **Development**: See [Roadmap](../roadmap.md)
 - **Design**: See [Design Specification](../design_spec.md)
 
 ---
