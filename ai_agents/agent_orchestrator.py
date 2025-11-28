@@ -17,6 +17,8 @@ from ai_agents.code_fix_agent import CodeFixAgent
 from ai_agents.impact_analysis_agent import ImpactAnalysisAgent
 from ai_agents.mapping_reconstruction_agent import MappingReconstructionAgent
 from ai_agents.workflow_simulation_agent import WorkflowSimulationAgent
+from ai_agents.model_enhancement_agent import ModelEnhancementAgent
+from ai_agents.model_validation_agent import ModelValidationAgent
 from src.llm.llm_manager import LLMManager
 from src.utils.logger import get_logger
 from src.utils.exceptions import ModernizationError
@@ -48,6 +50,10 @@ class AgentOrchestrator:
         self.impact_agent = ImpactAnalysisAgent(self.llm)
         self.reconstruction_agent = MappingReconstructionAgent(self.llm)
         self.simulation_agent = WorkflowSimulationAgent(self.llm)
+        
+        # Initialize enhancement agents (Phase 1)
+        self.enhancement_agent = ModelEnhancementAgent(self.llm, use_llm=False)
+        self.validation_agent = ModelValidationAgent()
         
         logger.info("Agent Orchestrator initialized")
 
@@ -203,3 +209,92 @@ class AgentOrchestrator:
         except Exception as e:
             logger.error(f"Workflow simulation failed: {str(e)}")
             raise ModernizationError(f"Workflow simulation failed: {str(e)}") from e
+    
+    def enhance_model(self, canonical_model: Dict[str, Any], 
+                     use_llm: bool = False) -> Dict[str, Any]:
+        """Enhance canonical model using Model Enhancement Agent.
+        
+        Args:
+            canonical_model: Canonical mapping model to enhance
+            use_llm: Whether to use LLM-based enhancements (default: False)
+            
+        Returns:
+            Enhanced canonical model with provenance tracking
+        """
+        try:
+            # Update enhancement agent LLM setting if needed
+            if use_llm != self.enhancement_agent.use_llm:
+                self.enhancement_agent.use_llm = use_llm
+            
+            return self.enhancement_agent.enhance(canonical_model)
+        except Exception as e:
+            logger.error(f"Model enhancement failed: {str(e)}")
+            raise ModernizationError(f"Model enhancement failed: {str(e)}") from e
+    
+    def validate_model(self, enhanced_model: Dict[str, Any],
+                      original_model: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Validate enhanced canonical model using Model Validation Agent.
+        
+        Args:
+            enhanced_model: Enhanced canonical model to validate
+            original_model: Optional original model for comparison
+            
+        Returns:
+            Validation result dictionary
+        """
+        try:
+            return self.validation_agent.validate(enhanced_model, original_model)
+        except Exception as e:
+            logger.error(f"Model validation failed: {str(e)}")
+            raise ModernizationError(f"Model validation failed: {str(e)}") from e
+    
+    def process_with_enhancement(self, canonical_model: Dict[str, Any],
+                                 enable_enhancement: bool = True,
+                                 use_llm: bool = False) -> Dict[str, Any]:
+        """Process mapping with AI enhancement (Phase 1 implementation).
+        
+        Args:
+            canonical_model: Canonical mapping model
+            enable_enhancement: Whether to enhance the model
+            use_llm: Whether to use LLM-based enhancements
+            
+        Returns:
+            Dictionary with:
+            - canonical_model: Enhanced or original model
+            - enhancement_applied: Whether enhancement was applied
+            - validation: Validation results if enhanced
+        """
+        try:
+            import json
+            original_model = json.loads(json.dumps(canonical_model))  # Deep copy
+            
+            if enable_enhancement:
+                # Enhance model
+                enhanced = self.enhance_model(canonical_model, use_llm=use_llm)
+                
+                # Validate enhanced model
+                validation = self.validate_model(enhanced, original_model)
+                
+                if validation["is_valid"]:
+                    return {
+                        "canonical_model": enhanced,
+                        "enhancement_applied": True,
+                        "validation": validation
+                    }
+                else:
+                    logger.warning("Enhancement validation failed, using original model")
+                    return {
+                        "canonical_model": original_model,
+                        "enhancement_applied": False,
+                        "validation": validation
+                    }
+            else:
+                return {
+                    "canonical_model": original_model,
+                    "enhancement_applied": False,
+                    "validation": None
+                }
+                
+        except Exception as e:
+            logger.error(f"Process with enhancement failed: {str(e)}")
+            raise ModernizationError(f"Process with enhancement failed: {str(e)}") from e

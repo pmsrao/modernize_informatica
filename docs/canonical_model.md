@@ -15,6 +15,11 @@ The canonical model captures:
 - **Fields**: Names, data types, expressions, and lineage
 - **Connections**: Data flow between transformations
 - **Metadata**: Names, descriptions, and annotations
+- **Enhancement Metadata** (optional): AI-enhanced metadata added by Model Enhancement Agent
+  - `_optimization_hint`: Performance optimization suggestions
+  - `_data_quality_rules`: Data quality constraints
+  - `_performance_metadata`: Performance characteristics
+  - `_provenance`: Tracking of enhancements applied (Phase 1)
 
 ---
 
