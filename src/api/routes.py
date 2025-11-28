@@ -152,6 +152,117 @@ async def get_file_info(file_id: str):
     return metadata
 
 
+@router.post("/upload/directory", status_code=status.HTTP_201_CREATED)
+async def upload_directory(files: list[UploadFile] = File(...)):
+    """Upload multiple files from a directory (zip or multiple files).
+    
+    Args:
+        files: List of XML files to upload
+        
+    Returns:
+        Summary of uploaded files with metadata
+    """
+    try:
+        logger.info(f"Directory upload requested: {len(files)} files")
+        
+        uploaded_files = []
+        errors = []
+        
+        for file in files:
+            try:
+                # Read file content
+                content = await file.read()
+                
+                # Save file
+                metadata = file_manager.save_uploaded_file(content, file.filename)
+                uploaded_files.append(metadata)
+                
+            except ValidationError as e:
+                errors.append({
+                    "filename": file.filename,
+                    "error": str(e)
+                })
+                logger.warning(f"Failed to upload {file.filename}: {str(e)}")
+            except Exception as e:
+                errors.append({
+                    "filename": file.filename,
+                    "error": str(e)
+                })
+                logger.error(f"Failed to upload {file.filename}: {str(e)}")
+        
+        # Generate summary
+        summary = {
+            "total_files": len(files),
+            "uploaded": len(uploaded_files),
+            "failed": len(errors),
+            "files": uploaded_files,
+            "errors": errors
+        }
+        
+        # Group by file type
+        by_type = {}
+        for file_meta in uploaded_files:
+            file_type = file_meta.get("file_type", "unknown")
+            if file_type not in by_type:
+                by_type[file_type] = []
+            by_type[file_type].append(file_meta)
+        
+        summary["by_type"] = by_type
+        
+        logger.info(f"Directory upload completed: {len(uploaded_files)}/{len(files)} files uploaded")
+        
+        return {
+            "success": True,
+            "summary": summary,
+            "message": f"Uploaded {len(uploaded_files)}/{len(files)} files successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Directory upload failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Directory upload failed: {str(e)}"
+        )
+
+
+@router.get("/files")
+async def list_all_files(file_type: Optional[str] = None):
+    """List all uploaded files.
+    
+    Args:
+        file_type: Optional filter by file type (mapping, workflow, session, worklet)
+        
+    Returns:
+        List of file metadata
+    """
+    try:
+        if file_type:
+            files = file_manager.get_files_by_type(file_type)
+        else:
+            files = file_manager.list_all_files()
+        
+        # Group by type for summary
+        by_type = {}
+        for file_meta in files:
+            ftype = file_meta.get("file_type", "unknown")
+            if ftype not in by_type:
+                by_type[ftype] = []
+            by_type[ftype].append(file_meta)
+        
+        return {
+            "success": True,
+            "total": len(files),
+            "files": files,
+            "by_type": by_type
+        }
+    except Exception as e:
+        logger.error(f"List files failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"List files failed: {str(e)}"
+        )
+
+
 # ============================================================================
 # Parsing Endpoints
 # ============================================================================
