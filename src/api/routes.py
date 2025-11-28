@@ -1,4 +1,5 @@
 """API Routes — Complete implementation of all endpoints."""
+import os
 from fastapi import APIRouter, UploadFile, File, HTTPException, status
 from fastapi.responses import JSONResponse
 from typing import Optional
@@ -153,9 +154,13 @@ async def parse_mapping(request: ParseMappingRequest):
         # Normalize to canonical model
         canonical_model = normalizer.normalize(raw_mapping)
         
-        # Store in version store
-        mapping_id = canonical_model.get("mapping_name", "unknown")
-        version_store.save(mapping_id, canonical_model)
+        # Store in version store by both mapping_name and file_id (if available)
+        mapping_name = canonical_model.get("mapping_name", "unknown")
+        version_store.save(mapping_name, canonical_model)
+        
+        # Also store by file_id if available for easier lookup
+        if request.file_id:
+            version_store.save(request.file_id, canonical_model)
         
         logger.info(f"Mapping parsed successfully: {mapping_id}")
         
@@ -571,11 +576,56 @@ async def generate_spec(request: GenerateSpecRequest):
 def _get_mapping_for_analysis(request) -> dict:
     """Helper to get canonical model for AI analysis."""
     if request.canonical_model:
+        if not isinstance(request.canonical_model, dict):
+            raise ValidationError("canonical_model must be a dictionary")
         return request.canonical_model
-    elif request.mapping_id:
-        return version_store.load(request.mapping_id)
-    else:
-        raise ValidationError("Either canonical_model or mapping_id must be provided")
+    
+    # Try file_id first (most common case)
+    file_id = getattr(request, 'file_id', None) or getattr(request, 'mapping_id', None)
+    
+    if not file_id:
+        raise ValidationError("Either canonical_model, mapping_id, or file_id must be provided")
+    
+    # First, try to load from version store by file_id (could be UUID or mapping_name)
+    model = version_store.load(file_id)
+    if model and isinstance(model, dict):
+        logger.debug(f"Loaded mapping from version store: {file_id}")
+        return model
+    
+    # If not found, try treating as file_id and parse the file
+    file_path = file_manager.get_file_path(file_id)
+    if file_path and os.path.exists(file_path):
+        logger.info(f"Parsing file for analysis: {file_path}")
+        try:
+            parser = MappingParser(file_path)
+            raw_mapping = parser.parse()
+            canonical_model = normalizer.normalize(raw_mapping)
+            
+            if not canonical_model or not isinstance(canonical_model, dict):
+                raise ValidationError("Failed to normalize mapping to canonical model")
+            
+            # Store it by both file_id and mapping_name for future use
+            mapping_name = canonical_model.get("mapping_name", "unknown")
+            version_store.save(file_id, canonical_model)  # Store by file_id
+            version_store.save(mapping_name, canonical_model)  # Store by mapping_name
+            logger.info(f"Mapping parsed and stored: {mapping_name} (file_id: {file_id})")
+            return canonical_model
+        except Exception as e:
+            logger.error(f"Failed to parse file for analysis: {file_path}", error=e)
+            raise ValidationError(f"Failed to parse file: {str(e)}")
+    
+    # If still not found, check if it's a mapping_name that was stored
+    # (This handles the case where someone uses mapping_name as mapping_id)
+    model = version_store.load(file_id)
+    if model and isinstance(model, dict):
+        logger.debug(f"Loaded mapping by name from version store: {file_id}")
+        return model
+    
+    raise ValidationError(
+        f"Mapping not found: {file_id}. "
+        "Please ensure: 1) The file has been uploaded, 2) The file has been parsed, "
+        "or 3) Provide the canonical_model directly."
+    )
 
 
 @router.post("/analyze/summary", response_model=AIAnalysisResponse)

@@ -48,6 +48,9 @@ class TransformationSuggestionAgent:
             - priority: High, Medium, or Low
         """
         try:
+            if not mapping or not isinstance(mapping, dict):
+                raise ModernizationError("Invalid mapping: mapping must be a non-empty dictionary")
+            
             mapping_name = mapping.get("mapping_name", "unknown")
             logger.info(f"Generating suggestions for mapping: {mapping_name}")
             

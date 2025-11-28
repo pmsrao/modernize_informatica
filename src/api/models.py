@@ -89,20 +89,23 @@ class GenerateResponse(BaseModel):
 # AI Analysis Models
 class AnalyzeSummaryRequest(BaseModel):
     """Request model for mapping summary analysis."""
-    mapping_id: Optional[str] = Field(None, description="Mapping ID from version store")
+    mapping_id: Optional[str] = Field(None, description="Mapping ID from version store or file_id")
     canonical_model: Optional[Dict[str, Any]] = Field(None, description="Canonical model directly")
+    file_id: Optional[str] = Field(None, description="File ID to parse and analyze")
 
 
 class AnalyzeRisksRequest(BaseModel):
     """Request model for risk analysis."""
-    mapping_id: Optional[str] = Field(None, description="Mapping ID from version store")
+    mapping_id: Optional[str] = Field(None, description="Mapping ID from version store or file_id")
     canonical_model: Optional[Dict[str, Any]] = Field(None, description="Canonical model directly")
+    file_id: Optional[str] = Field(None, description="File ID to parse and analyze")
 
 
 class AnalyzeSuggestionsRequest(BaseModel):
     """Request model for transformation suggestions."""
-    mapping_id: Optional[str] = Field(None, description="Mapping ID from version store")
+    mapping_id: Optional[str] = Field(None, description="Mapping ID from version store or file_id")
     canonical_model: Optional[Dict[str, Any]] = Field(None, description="Canonical model directly")
+    file_id: Optional[str] = Field(None, description="File ID to parse and analyze")
 
 
 class ExplainExpressionRequest(BaseModel):

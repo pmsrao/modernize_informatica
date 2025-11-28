@@ -45,6 +45,9 @@ class MappingSummaryAgent:
             - key_business_rules: List of key business rules identified
         """
         try:
+            if not mapping or not isinstance(mapping, dict):
+                raise ModernizationError("Invalid mapping: mapping must be a non-empty dictionary")
+            
             mapping_name = mapping.get("mapping_name", "unknown")
             logger.info(f"Generating summary for mapping: {mapping_name}")
             
