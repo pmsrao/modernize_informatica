@@ -258,7 +258,20 @@ class GraphQueries:
                 RETURN DISTINCT tab.name as table, tab.database as database, 'WRITES_TABLE' as relationship_type
             """, name=mapping_name)
             
-            tables = [dict(record) for record in tables_result]
+            # Group by table to collect relationship types
+            tables_dict = {}
+            for record in tables_result:
+                table_name = record["table"]
+                if table_name not in tables_dict:
+                    tables_dict[table_name] = {
+                        "table": table_name,
+                        "database": record["database"],
+                        "relationship_types": []
+                    }
+                if record["relationship_type"] not in tables_dict[table_name]["relationship_types"]:
+                    tables_dict[table_name]["relationship_types"].append(record["relationship_type"])
+            
+            tables = list(tables_dict.values())
             
             # Find dependent mappings
             deps_result = session.run("""
