@@ -464,15 +464,20 @@ class MappingParser:
         """Parse connector definitions (data flow between transformations)."""
         connectors = []
         for conn in self.root.findall(".//CONNECTOR"):
-            from_trans = get_text(conn, "FROMTRANSFORMATION")
-            to_trans = get_text(conn, "TOTRANSFORMATION")
-            from_port = get_text(conn, "FROMPORT")
-            to_port = get_text(conn, "TOPORT")
+            # Try FROMINSTANCE/TOINSTANCE first (Informatica format)
+            from_trans = conn.get("FROMINSTANCE") or get_text(conn, "FROMTRANSFORMATION") or get_text(conn, "FROMINSTANCE")
+            to_trans = conn.get("TOINSTANCE") or get_text(conn, "TOTRANSFORMATION") or get_text(conn, "TOINSTANCE")
+            from_port = conn.get("FROMFIELD") or get_text(conn, "FROMPORT") or get_text(conn, "FROMFIELD")
+            to_port = conn.get("TOFIELD") or get_text(conn, "TOPORT") or get_text(conn, "TOFIELD")
             
-            connectors.append({
-                "from_transformation": from_trans,
-                "to_transformation": to_trans,
-                "from_port": from_port,
-                "to_port": to_port
-            })
+            if from_trans and to_trans:
+                connectors.append({
+                    "from_transformation": from_trans,
+                    "to_transformation": to_trans,
+                    "from_port": from_port,
+                    "to_port": to_port
+                })
+                logger.debug(f"Parsed connector: {from_trans} -> {to_trans}")
+        
+        logger.info(f"Parsed {len(connectors)} connectors")
         return connectors

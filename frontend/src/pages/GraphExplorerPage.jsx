@@ -512,9 +512,14 @@ export default function GraphExplorerPage() {
                   nodes={graphData.nodes}
                   edges={graphData.edges}
                   nodeTypes={nodeTypes}
+                  edgeTypes={{}}
                   onNodeClick={handleNodeClick}
                   fitView
                   style={{ background: '#fafafa' }}
+                  defaultEdgeOptions={{
+                    animated: true,
+                    style: { strokeWidth: 2 }
+                  }}
                 >
                   <Background />
                   <Controls />

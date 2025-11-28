@@ -1667,13 +1667,16 @@ async def get_mapping_structure(mapping_name: str):
         logger.debug(f"Processing {len(connectors)} connectors for mapping {mapping_name}")
         
         for conn in connectors:
-            from_trans = conn.get("from_transformation", "") or conn.get("from", "")
-            to_trans = conn.get("to_transformation", "") or conn.get("to", "")
-            from_port = conn.get("from_port", "") or conn.get("from_port", "")
-            to_port = conn.get("to_port", "") or conn.get("to_port", "")
+            from_trans = conn.get("from_transformation", "") or conn.get("from", "") or conn.get("frominstance", "")
+            to_trans = conn.get("to_transformation", "") or conn.get("to", "") or conn.get("toinstance", "")
+            from_port = conn.get("from_port", "") or conn.get("fromfield", "")
+            to_port = conn.get("to_port", "") or conn.get("tofield", "")
             
             if not from_trans or not to_trans:
+                logger.debug(f"Skipping connector with missing from/to: {conn}")
                 continue
+            
+            logger.debug(f"Processing connector: {from_trans} -> {to_trans}")
             
             # Check if from_trans is a source
             if from_trans in source_map:
