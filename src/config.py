@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     # Version Store Configuration
     version_store_path: str = "./versions"
     
+    # Neo4j Configuration
+    neo4j_uri: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+    neo4j_user: str = os.getenv("NEO4J_USER", "neo4j")
+    neo4j_password: str = os.getenv("NEO4J_PASSWORD", "password")
+    enable_graph_store: bool = os.getenv("ENABLE_GRAPH_STORE", "false").lower() == "true"
+    graph_first: bool = os.getenv("GRAPH_FIRST", "false").lower() == "true"
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

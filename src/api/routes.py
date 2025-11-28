@@ -51,6 +51,41 @@ version_store = VersionStore(path=settings.version_store_path)
 normalizer = MappingNormalizer()
 agent_orchestrator = AgentOrchestrator()
 
+# Initialize graph store if enabled
+graph_store = None
+graph_queries = None
+if settings.enable_graph_store:
+    try:
+        from src.graph.graph_store import GraphStore
+        from src.graph.graph_queries import GraphQueries
+        
+        graph_store = GraphStore(
+            uri=settings.neo4j_uri,
+            user=settings.neo4j_user,
+            password=settings.neo4j_password
+        )
+        graph_queries = GraphQueries(graph_store)
+        
+        # Update version store to use graph
+        if settings.graph_first:
+            version_store = VersionStore(
+                path=settings.version_store_path,
+                graph_store=graph_store,
+                graph_first=True
+            )
+        else:
+            version_store = VersionStore(
+                path=settings.version_store_path,
+                graph_store=graph_store,
+                graph_first=False
+            )
+        
+        logger.info("Graph store initialized and enabled")
+    except Exception as e:
+        logger.warning(f"Failed to initialize graph store: {str(e)}")
+        graph_store = None
+        graph_queries = None
+
 
 # ============================================================================
 # File Upload Endpoints
@@ -991,4 +1026,169 @@ async def visualize_dag(request: BuildDAGRequest, format: str = "json", include_
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"DAG visualization failed: {str(e)}"
+        )
+
+
+# ============================================================================
+# Graph Query Endpoints (Phase 3: Graph-First)
+# ============================================================================
+
+@router.get("/graph/mappings/using-table/{table_name}")
+async def get_mappings_using_table(table_name: str, database: Optional[str] = None):
+    """Get all mappings using a specific table.
+    
+    Args:
+        table_name: Table name
+        database: Optional database name
+        
+    Returns:
+        List of mappings using the table
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        mappings = graph_queries.find_mappings_using_table(table_name, database)
+        
+        return {
+            "success": True,
+            "table": table_name,
+            "database": database,
+            "mappings": mappings,
+            "count": len(mappings)
+        }
+    except Exception as e:
+        logger.error(f"Graph query failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Graph query failed: {str(e)}"
+        )
+
+
+@router.get("/graph/mappings/{mapping_name}/dependencies")
+async def get_dependencies(mapping_name: str):
+    """Get all mappings that depend on this mapping.
+    
+    Args:
+        mapping_name: Mapping name
+        
+    Returns:
+        List of dependent mappings
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        dependencies = graph_queries.find_dependent_mappings(mapping_name)
+        
+        return {
+            "success": True,
+            "mapping": mapping_name,
+            "dependencies": dependencies,
+            "count": len(dependencies)
+        }
+    except Exception as e:
+        logger.error(f"Graph query failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Graph query failed: {str(e)}"
+        )
+
+
+@router.get("/graph/lineage/trace")
+async def trace_lineage(source_table: str, target_table: str, database: Optional[str] = None):
+    """Trace data lineage from source to target.
+    
+    Args:
+        source_table: Source table name
+        target_table: Target table name
+        database: Optional database name
+        
+    Returns:
+        Lineage path
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        lineage = graph_queries.trace_lineage(source_table, target_table, database)
+        
+        return {
+            "success": True,
+            "source": source_table,
+            "target": target_table,
+            "database": database,
+            "lineage": lineage
+        }
+    except Exception as e:
+        logger.error(f"Lineage trace failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lineage trace failed: {str(e)}"
+        )
+
+
+@router.get("/graph/migration/order")
+async def get_migration_order():
+    """Get recommended migration order.
+    
+    Returns:
+        List of mappings in migration order
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        order = graph_queries.get_migration_order()
+        
+        return {
+            "success": True,
+            "migration_order": order,
+            "count": len(order)
+        }
+    except Exception as e:
+        logger.error(f"Migration order query failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Migration order query failed: {str(e)}"
+        )
+
+
+@router.get("/graph/statistics")
+async def get_graph_statistics():
+    """Get overall statistics about mappings in graph.
+    
+    Returns:
+        Statistics dictionary
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        stats = graph_queries.get_mapping_statistics()
+        
+        return {
+            "success": True,
+            "statistics": stats
+        }
+    except Exception as e:
+        logger.error(f"Statistics query failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Statistics query failed: {str(e)}"
         )
