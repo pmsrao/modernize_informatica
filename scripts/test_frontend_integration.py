@@ -10,8 +10,8 @@ from pathlib import Path
 # Configuration
 API_BASE_URL = "http://localhost:8000"
 SAMPLES_DIR = "samples"
-WORKFLOW_FILE = "samples/workflow_complex.xml"
-MAPPING_FILE = "samples/mapping_complex.xml"
+WORKFLOW_FILE = "samples/complex/workflow_complex.xml"
+MAPPING_FILE = "samples/complex/mapping_complex.xml"
 
 
 def check_api_health():

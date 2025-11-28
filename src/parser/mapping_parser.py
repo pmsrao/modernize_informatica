@@ -175,6 +175,25 @@ class MappingParser:
         expressions = []
         for exp in self.root.findall(".//TRANSFORMATION[@TYPE='Expression']"):
             ports = self._parse_ports(exp)
+            
+            # Also parse TRANSFORMFIELD elements (used in Expression transformations)
+            for tf in exp.findall(".//TRANSFORMFIELD"):
+                field_name = tf.get("NAME", "")
+                field_expr = tf.get("EXPR", "")
+                if field_name and field_expr:
+                    # Add as output port with expression
+                    port_info = {
+                        "name": field_name,
+                        "port_type": "OUTPUT",
+                        "expression": field_expr
+                    }
+                    # Check if port already exists (from PORT element)
+                    existing_port = next((p for p in ports if p.get("name") == field_name), None)
+                    if existing_port:
+                        existing_port["expression"] = field_expr
+                    else:
+                        ports.append(port_info)
+            
             expressions.append({
                 "type": "EXPRESSION",
                 "name": exp.get("NAME", ""),
@@ -200,6 +219,13 @@ class MappingParser:
                     "operator": get_text(cond_elem, "OPERATOR")
                 }
             
+            # Get lookup table name from LOOKUPTABLE element or TABLENAME attribute
+            table_name = get_text(lkp, "TABLENAME")
+            if not table_name:
+                lookup_table_elem = lkp.find(".//LOOKUPTABLE")
+                if lookup_table_elem is not None:
+                    table_name = lookup_table_elem.get("NAME", "")
+            
             lookups.append({
                 "type": "LOOKUP",
                 "name": lkp.get("NAME", ""),
@@ -207,7 +233,7 @@ class MappingParser:
                 "cache_type": cache_type,
                 "ports": ports,
                 "condition": condition,
-                "table_name": get_text(lkp, "TABLENAME"),
+                "table_name": table_name or "",
                 "connection": get_text(lkp, "CONNECTION")
             })
         return lookups
@@ -218,12 +244,17 @@ class MappingParser:
         for agg in self.root.findall(".//TRANSFORMATION[@TYPE='Aggregator']"):
             ports = self._parse_ports(agg)
             
-            # Parse group by ports
+            # Parse group by ports - check both GROUPBY and GROUPBYFIELD elements
             group_by_ports = []
             for gb in agg.findall(".//GROUPBY"):
                 group_by_ports.append(gb.get("NAME", ""))
+            # Also check GROUPBYFIELD elements
+            for gbf in agg.findall(".//GROUPBYFIELD"):
+                field_name = gbf.get("NAME", "")
+                if field_name and field_name not in group_by_ports:
+                    group_by_ports.append(field_name)
             
-            # Parse aggregate functions
+            # Parse aggregate functions - check both AGGREGATEFUNCTION and TRANSFORMFIELD
             aggregate_functions = []
             for af in agg.findall(".//AGGREGATEFUNCTION"):
                 aggregate_functions.append({
@@ -231,6 +262,26 @@ class MappingParser:
                     "function": af.get("FUNCTION", ""),
                     "expression": get_text(af, "EXPRESSION")
                 })
+            
+            # Also parse TRANSFORMFIELD elements for aggregate expressions (e.g., SUM(SALES_AMT))
+            for tf in agg.findall(".//TRANSFORMFIELD"):
+                field_name = tf.get("NAME", "")
+                field_expr = tf.get("EXPR", "")
+                if field_name and field_expr:
+                    # Extract function name from expression (e.g., SUM, AVG, COUNT, etc.)
+                    expr_upper = field_expr.upper()
+                    func_name = None
+                    for func in ["SUM", "AVG", "COUNT", "MAX", "MIN", "STDDEV", "VARIANCE"]:
+                        if expr_upper.startswith(func + "("):
+                            func_name = func
+                            break
+                    
+                    if func_name:
+                        aggregate_functions.append({
+                            "function": func_name,
+                            "port": field_name,
+                            "expression": field_expr
+                        })
             
             aggregators.append({
                 "type": "AGGREGATOR",

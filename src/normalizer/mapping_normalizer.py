@@ -189,18 +189,19 @@ class MappingNormalizer:
         # Check for common incremental key patterns
         for trans in mapping_raw.get("transformations", []):
             if trans.get("type") == "FILTER":
-                filter_cond = trans.get("filter_condition", "")
+                filter_cond = trans.get("filter_condition") or ""
                 # Look for date-based filters
-                if any(keyword in filter_cond.upper() for keyword in ["LAST_UPDATED", "MODIFIED_DATE", "CHANGE_DATE"]):
+                if filter_cond and any(keyword in filter_cond.upper() for keyword in ["LAST_UPDATED", "MODIFIED_DATE", "CHANGE_DATE"]):
                     # Extract potential key names
                     # This is a heuristic - could be enhanced with AI
                     pass
             
             # Check source qualifier for incremental patterns
             if trans.get("type") == "SOURCE_QUALIFIER":
-                sql_query = trans.get("sql_query", "")
-                filter_cond = trans.get("filter", "")
-                if "WHERE" in (sql_query + filter_cond).upper():
+                sql_query = trans.get("sql_query") or ""
+                filter_cond = trans.get("filter") or ""
+                combined = (sql_query + filter_cond).upper() if (sql_query or filter_cond) else ""
+                if combined and "WHERE" in combined:
                     # Could extract column names from WHERE clause
                     pass
         
