@@ -4,9 +4,10 @@ import UploadPage from './UploadPage.jsx'
 import ViewSpecPage from './ViewSpecPage.jsx'
 import LineagePage from './LineagePage.jsx'
 import GraphExplorerPage from './GraphExplorerPage.jsx'
+import FileBrowserPage from './FileBrowserPage.jsx'
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState('graph'); // 'upload', 'spec', 'lineage', 'graph'
+  const [currentPage, setCurrentPage] = useState('browser'); // 'browser', 'upload', 'spec', 'lineage', 'graph'
 
   const navStyle = {
     display: 'flex',
@@ -33,6 +34,12 @@ export default function App() {
       <div style={{ padding: '20px', background: 'white', borderBottom: '2px solid #ddd' }}>
         <h1 style={{ margin: '0 0 10px 0', color: '#333' }}>Informatica Modernization Accelerator</h1>
         <div style={navStyle}>
+          <button 
+            style={navButtonStyle(currentPage === 'browser')}
+            onClick={() => setCurrentPage('browser')}
+          >
+            📁 File Browser
+          </button>
           <button 
             style={navButtonStyle(currentPage === 'graph')}
             onClick={() => setCurrentPage('graph')}
@@ -61,6 +68,7 @@ export default function App() {
       </div>
 
       <div>
+        {currentPage === 'browser' && <FileBrowserPage />}
         {currentPage === 'graph' && <GraphExplorerPage />}
         {currentPage === 'upload' && <UploadPage />}
         {currentPage === 'spec' && <ViewSpecPage />}

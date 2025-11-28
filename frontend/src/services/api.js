@@ -296,6 +296,30 @@ class APIClient {
   async findPattern(patternType, patternValue) {
     return this.request(`/api/v1/graph/patterns/${patternType}?pattern_value=${encodeURIComponent(patternValue)}`);
   }
+
+  // Directory Upload and File Management
+  async uploadDirectory(formData) {
+    const response = await fetch(`${this.baseURL}/api/v1/upload/directory`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new APIError(
+        error.detail || 'Directory upload failed',
+        response.status,
+        error
+      );
+    }
+
+    return await response.json();
+  }
+
+  async listAllFiles(fileType = null) {
+    const params = fileType ? `?file_type=${fileType}` : '';
+    return this.request(`/api/v1/files${params}`);
+  }
 }
 
 // Export singleton instance

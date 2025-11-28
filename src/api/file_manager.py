@@ -159,6 +159,25 @@ class FileManager:
             pass
         
         return "unknown"
+    
+    def list_all_files(self) -> list:
+        """List all uploaded files with metadata.
+        
+        Returns:
+            List of file metadata dictionaries
+        """
+        return list(self.file_registry.values())
+    
+    def get_files_by_type(self, file_type: str) -> list:
+        """Get all files of a specific type.
+        
+        Args:
+            file_type: File type (mapping, workflow, session, worklet)
+            
+        Returns:
+            List of file metadata dictionaries
+        """
+        return [f for f in self.file_registry.values() if f.get("file_type") == file_type]
 
 
 # Global file manager instance
