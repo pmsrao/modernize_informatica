@@ -488,7 +488,8 @@ async def generate_pyspark(request: GeneratePySparkRequest):
             success=True,
             code=code,
             language="pyspark",
-            message="PySpark code generated successfully"
+            message="PySpark code generated successfully",
+            review=review_result
         )
         
     except GenerationError as e:
