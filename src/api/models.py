@@ -20,6 +20,7 @@ class ParseMappingRequest(BaseModel):
     """Request model for parsing mapping XML."""
     file_id: Optional[str] = Field(None, description="File ID from upload")
     file_path: Optional[str] = Field(None, description="Direct file path (alternative to file_id)")
+    enhance_model: bool = Field(True, description="Enable AI enhancement of canonical model")
 
 
 class ParseWorkflowRequest(BaseModel):

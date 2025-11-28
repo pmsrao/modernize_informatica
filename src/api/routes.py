@@ -189,15 +189,39 @@ async def parse_mapping(request: ParseMappingRequest):
         # Normalize to canonical model
         canonical_model = normalizer.normalize(raw_mapping)
         
-        # Store in version store by both mapping_name and file_id (if available)
-        mapping_name = canonical_model.get("mapping_name", "unknown")
-        version_store.save(mapping_name, canonical_model)
+        # AI Enhancement (Part 1: Enhance canonical model)
+        enhanced_model = canonical_model
+        enhancement_applied = False
+        if request.enhance_model:
+            try:
+                enhanced_result = agent_orchestrator.process_with_enhancement(
+                    canonical_model,
+                    enable_enhancement=True
+                )
+                enhanced_model = enhanced_result.get("canonical_model", canonical_model)
+                enhancement_applied = enhanced_result.get("enhancement_applied", False)
+                logger.info(f"AI enhancement applied: {enhancement_applied}")
+            except Exception as e:
+                logger.warning(f"AI enhancement failed, using original model: {str(e)}")
+                enhanced_model = canonical_model
+        
+        # Store in version store (saves to graph if graph_first=True)
+        mapping_name = enhanced_model.get("mapping_name", "unknown")
+        version_store.save(mapping_name, enhanced_model)
         
         # Also store by file_id if available for easier lookup
         if request.file_id:
-            version_store.save(request.file_id, canonical_model)
+            version_store.save(request.file_id, enhanced_model)
         
-        logger.info(f"Mapping parsed successfully: {mapping_name}")
+        # Explicitly save to graph if graph store is enabled (redundant but ensures it's saved)
+        if graph_store:
+            try:
+                graph_store.save_mapping(enhanced_model)
+                logger.debug(f"Model explicitly saved to graph: {mapping_name}")
+            except Exception as e:
+                logger.warning(f"Failed to save to graph explicitly: {str(e)}")
+        
+        logger.info(f"Mapping parsed successfully: {mapping_name} (enhancement: {enhancement_applied})")
         
         return ParseResponse(
             success=True,
