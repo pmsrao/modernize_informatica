@@ -2,10 +2,10 @@
 import os
 from fastapi import APIRouter, UploadFile, File, HTTPException, status
 from fastapi.responses import JSONResponse
-from typing import Optional
+from typing import Optional, Dict, Any
 from datetime import datetime
 
-from api.models import (
+from .models import (
     FileUploadResponse,
     ParseMappingRequest, ParseWorkflowRequest, ParseSessionRequest, ParseWorkletRequest,
     ParseResponse,
@@ -16,7 +16,7 @@ from api.models import (
     BuildDAGRequest, DAGResponse,
     ErrorResponse
 )
-from api.file_manager import file_manager
+from .file_manager import file_manager
 from parser import MappingParser, WorkflowParser, SessionParser, WorkletParser
 from normalizer import MappingNormalizer
 from generators import PySparkGenerator, DLTGenerator, SQLGenerator, SpecGenerator
