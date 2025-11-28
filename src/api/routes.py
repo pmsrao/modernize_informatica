@@ -1618,16 +1618,20 @@ async def get_mapping_structure(mapping_name: str):
                 "label": "HAS_TARGET"
             })
         
-        # Add transformation nodes
+        # Add transformation nodes and create name-to-id mapping
+        transformation_map = {}  # transformation_name -> node_id
         transformations = canonical_model.get("transformations", [])
         for idx, trans in enumerate(transformations):
-            trans_id = f"trans_{mapping_name}_{idx}"
+            trans_name = trans.get("name", f"Trans_{idx}")
+            trans_id = f"trans_{mapping_name}_{trans_name}"
+            transformation_map[trans_name] = trans_id
+            
             nodes.append({
                 "id": trans_id,
                 "type": "transformation",
-                "label": trans.get("name", f"Trans {idx}"),
+                "label": trans_name,
                 "data": {
-                    "name": trans.get("name"),
+                    "name": trans_name,
                     "type": trans.get("type", "unknown"),
                     "transformation_type": trans.get("type", "unknown")
                 }
@@ -1639,28 +1643,162 @@ async def get_mapping_structure(mapping_name: str):
                 "type": "has_transformation",
                 "label": "HAS_TRANSFORMATION"
             })
+        
+        # Build edges from connectors (actual data flow)
+        connectors = canonical_model.get("connectors", [])
+        source_map = {}  # source_name -> node_id
+        target_map = {}  # target_name -> node_id
+        
+        # Create source name mapping
+        for idx, source in enumerate(sources):
+            source_name = source.get("name", f"Source_{idx}")
+            source_id = f"source_{mapping_name}_{idx}"
+            source_map[source_name] = source_id
+        
+        # Create target name mapping
+        for idx, target in enumerate(targets):
+            target_name = target.get("name", f"Target_{idx}")
+            target_id = f"target_{mapping_name}_{idx}"
+            target_map[target_name] = target_id
+        
+        # Process connectors to build data flow edges
+        edge_set = set()  # Track edges to avoid duplicates
+        
+        for conn in connectors:
+            from_trans = conn.get("from_transformation", "")
+            to_trans = conn.get("to_transformation", "")
+            from_port = conn.get("from_port", "")
+            to_port = conn.get("to_port", "")
             
-            # Add flows from sources to transformations
-            for source_idx, source in enumerate(sources):
-                source_id = f"source_{mapping_name}_{source_idx}"
-                edges.append({
-                    "id": f"edge_{source_id}_to_{trans_id}",
-                    "source": source_id,
-                    "target": trans_id,
-                    "type": "flows_to",
-                    "label": "FLOWS_TO"
-                })
+            # Check if from_trans is a source
+            if from_trans in source_map:
+                source_id = source_map[from_trans]
+                if to_trans in transformation_map:
+                    trans_id = transformation_map[to_trans]
+                    edge_id = f"edge_{source_id}_to_{trans_id}"
+                    if edge_id not in edge_set:
+                        edges.append({
+                            "id": edge_id,
+                            "source": source_id,
+                            "target": trans_id,
+                            "type": "flows_to",
+                            "label": "FLOWS_TO"
+                        })
+                        edge_set.add(edge_id)
             
-            # Add flows from transformations to targets
-            for target_idx, target in enumerate(targets):
-                target_id = f"target_{mapping_name}_{target_idx}"
-                edges.append({
-                    "id": f"edge_{trans_id}_to_{target_id}",
-                    "source": trans_id,
-                    "target": target_id,
-                    "type": "flows_to",
-                    "label": "FLOWS_TO"
-                })
+            # Check if to_trans is a target
+            elif to_trans in target_map:
+                target_id = target_map[to_trans]
+                if from_trans in transformation_map:
+                    trans_id = transformation_map[from_trans]
+                    edge_id = f"edge_{trans_id}_to_{target_id}"
+                    if edge_id not in edge_set:
+                        edges.append({
+                            "id": edge_id,
+                            "source": trans_id,
+                            "target": target_id,
+                            "type": "flows_to",
+                            "label": "FLOWS_TO"
+                        })
+                        edge_set.add(edge_id)
+            
+            # Transformation to transformation
+            elif from_trans in transformation_map and to_trans in transformation_map:
+                from_id = transformation_map[from_trans]
+                to_id = transformation_map[to_trans]
+                edge_id = f"edge_{from_id}_to_{to_id}"
+                if edge_id not in edge_set:
+                    edges.append({
+                        "id": edge_id,
+                        "source": from_id,
+                        "target": to_id,
+                        "type": "flows_to",
+                        "label": "FLOWS_TO",
+                        "data": {
+                            "from_port": from_port,
+                            "to_port": to_port
+                        }
+                    })
+                    edge_set.add(edge_id)
+        
+        # Also use lineage information if connectors are missing
+        if not connectors and canonical_model.get("lineage"):
+            lineage = canonical_model.get("lineage", {})
+            transformation_lineage = lineage.get("transformation_level", [])
+            
+            for lineage_item in transformation_lineage:
+                from_trans = lineage_item.get("from", "")
+                to_trans = lineage_item.get("to", "")
+                
+                if from_trans in source_map:
+                    source_id = source_map[from_trans]
+                    if to_trans in transformation_map:
+                        trans_id = transformation_map[to_trans]
+                        edge_id = f"edge_{source_id}_to_{trans_id}"
+                        if edge_id not in edge_set:
+                            edges.append({
+                                "id": edge_id,
+                                "source": source_id,
+                                "target": trans_id,
+                                "type": "flows_to",
+                                "label": "FLOWS_TO"
+                            })
+                            edge_set.add(edge_id)
+                
+                elif to_trans in target_map:
+                    target_id = target_map[to_trans]
+                    if from_trans in transformation_map:
+                        trans_id = transformation_map[from_trans]
+                        edge_id = f"edge_{trans_id}_to_{target_id}"
+                        if edge_id not in edge_set:
+                            edges.append({
+                                "id": edge_id,
+                                "source": trans_id,
+                                "target": target_id,
+                                "type": "flows_to",
+                                "label": "FLOWS_TO"
+                            })
+                            edge_set.add(edge_id)
+                
+                elif from_trans in transformation_map and to_trans in transformation_map:
+                    from_id = transformation_map[from_trans]
+                    to_id = transformation_map[to_trans]
+                    edge_id = f"edge_{from_id}_to_{to_id}"
+                    if edge_id not in edge_set:
+                        edges.append({
+                            "id": edge_id,
+                            "source": from_id,
+                            "target": to_id,
+                            "type": "flows_to",
+                            "label": "FLOWS_TO"
+                        })
+                        edge_set.add(edge_id)
+        
+        # Fallback: Connect Source Qualifiers to sources (if no connectors)
+        if not connectors:
+            for idx, trans in enumerate(transformations):
+                trans_name = trans.get("name", "")
+                trans_type = trans.get("type", "")
+                trans_id = transformation_map.get(trans_name)
+                
+                if trans_type == "SourceQualifier" and trans_id:
+                    # Find associated source (usually by name pattern)
+                    for source_idx, source in enumerate(sources):
+                        source_name = source.get("name", "")
+                        # Try to match source qualifier to source
+                        if source_name.upper() in trans_name.upper() or trans_name.upper() in source_name.upper():
+                            source_id = source_map.get(source_name)
+                            if source_id:
+                                edge_id = f"edge_{source_id}_to_{trans_id}"
+                                if edge_id not in edge_set:
+                                    edges.append({
+                                        "id": edge_id,
+                                        "source": source_id,
+                                        "target": trans_id,
+                                        "type": "flows_to",
+                                        "label": "FLOWS_TO"
+                                    })
+                                    edge_set.add(edge_id)
         
         return {
             "success": True,

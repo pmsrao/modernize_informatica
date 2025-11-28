@@ -161,17 +161,43 @@ export default function GraphExplorerPage() {
           position: { x: 0, y: 0 } // Will be calculated by layout
         }));
 
-        const edges = result.graph.edges.map((edge, idx) => ({
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          type: 'smoothstep',
-          animated: true,
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-          },
-          style: { stroke: '#666', strokeWidth: 2 }
-        }));
+        const edges = result.graph.edges.map((edge, idx) => {
+          // Determine edge style based on type
+          let edgeColor = '#666';
+          let edgeWidth = 2;
+          
+          if (edge.type === 'flows_to' || edge.label === 'FLOWS_TO') {
+            edgeColor = '#4A90E2';
+            edgeWidth = 3;
+          } else if (edge.type === 'has_source' || edge.label === 'HAS_SOURCE') {
+            edgeColor = '#50C878';
+            edgeWidth = 2;
+          } else if (edge.type === 'has_target' || edge.label === 'HAS_TARGET') {
+            edgeColor = '#FF6B6B';
+            edgeWidth = 2;
+          } else if (edge.type === 'has_transformation' || edge.label === 'HAS_TRANSFORMATION') {
+            edgeColor = '#999';
+            edgeWidth = 1;
+          }
+          
+          return {
+            id: edge.id,
+            source: edge.source,
+            target: edge.target,
+            type: 'smoothstep',
+            animated: edge.type === 'flows_to' || edge.label === 'FLOWS_TO',
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+            },
+            style: { 
+              stroke: edgeColor, 
+              strokeWidth: edgeWidth
+            },
+            label: edge.data?.from_port && edge.data?.to_port 
+              ? `${edge.data.from_port} → ${edge.data.to_port}`
+              : edge.label || ''
+          };
+        });
 
         // Simple layout: hierarchical
         layoutNodes(nodes, edges);
@@ -188,7 +214,7 @@ export default function GraphExplorerPage() {
   };
 
   const layoutNodes = (nodes, edges) => {
-    // Simple hierarchical layout
+    // Hierarchical layout based on data flow
     const mappingNode = nodes.find(n => n.type === 'mapping');
     if (!mappingNode) return;
 
@@ -196,22 +222,85 @@ export default function GraphExplorerPage() {
     const targets = nodes.filter(n => n.type === 'target');
     const transformations = nodes.filter(n => n.type === 'transformation');
 
-    // Position mapping in center
-    mappingNode.position = { x: 400, y: 300 };
-
-    // Position sources on left
-    sources.forEach((node, idx) => {
-      node.position = { x: 100, y: 100 + idx * 150 };
+    // Build adjacency list to determine levels
+    const adjacency = {};
+    const inDegree = {};
+    
+    nodes.forEach(node => {
+      adjacency[node.id] = [];
+      inDegree[node.id] = 0;
+    });
+    
+    edges.forEach(edge => {
+      if (edge.type === 'flows_to' || edge.type === 'FLOWS_TO') {
+        if (adjacency[edge.source]) {
+          adjacency[edge.source].push(edge.target);
+          inDegree[edge.target] = (inDegree[edge.target] || 0) + 1;
+        }
+      }
     });
 
-    // Position transformations in middle
-    transformations.forEach((node, idx) => {
-      node.position = { x: 400, y: 100 + idx * 150 };
+    // Assign levels using BFS
+    const levels = {};
+    const queue = [];
+    
+    // Sources are level 0
+    sources.forEach(source => {
+      levels[source.id] = 0;
+      queue.push({ id: source.id, level: 0 });
+    });
+    
+    // If no sources, start with nodes that have no incoming edges
+    if (sources.length === 0) {
+      nodes.forEach(node => {
+        if (inDegree[node.id] === 0 && node.type !== 'mapping') {
+          levels[node.id] = 0;
+          queue.push({ id: node.id, level: 0 });
+        }
+      });
+    }
+    
+    // BFS to assign levels
+    while (queue.length > 0) {
+      const { id, level } = queue.shift();
+      if (adjacency[id]) {
+        adjacency[id].forEach(neighbor => {
+          if (levels[neighbor] === undefined) {
+            levels[neighbor] = level + 1;
+            queue.push({ id: neighbor, level: level + 1 });
+          }
+        });
+      }
+    }
+
+    // Position mapping at top center
+    mappingNode.position = { x: 500, y: 50 };
+
+    // Position nodes by level
+    const levelWidth = 250;
+    const startX = 100;
+    const startY = 200;
+    const verticalSpacing = 120;
+
+    const nodesByLevel = {};
+    nodes.forEach(node => {
+      if (node.type !== 'mapping') {
+        const level = levels[node.id] !== undefined ? levels[node.id] : 1;
+        if (!nodesByLevel[level]) {
+          nodesByLevel[level] = [];
+        }
+        nodesByLevel[level].push(node);
+      }
     });
 
-    // Position targets on right
-    targets.forEach((node, idx) => {
-      node.position = { x: 700, y: 100 + idx * 150 };
+    Object.keys(nodesByLevel).sort((a, b) => parseInt(a) - parseInt(b)).forEach(level => {
+      const levelNodes = nodesByLevel[level];
+      levelNodes.forEach((node, idx) => {
+        node.position = {
+          x: startX + parseInt(level) * levelWidth,
+          y: startY + idx * verticalSpacing
+        };
+      });
     });
   };
 
