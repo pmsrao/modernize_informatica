@@ -202,7 +202,6 @@ class GraphStore:
                             trans_props[key] = value
                         # For complex objects, serialize to JSON string
                         elif isinstance(value, (dict, list)):
-                            import json
                             trans_props[f"{key}_json"] = json.dumps(value)
             
             tx.run("""
@@ -315,7 +314,6 @@ class GraphStore:
                 "ports": []
             }
             # Merge properties (deserialize JSON strings back to objects)
-            import json
             for key, value in trans.items():
                 if key not in ["name", "type"]:
                     # Deserialize JSON strings back to objects
