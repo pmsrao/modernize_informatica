@@ -1,0 +1,72 @@
+graph TB
+    subgraph "Input Layer"
+        XML[Informatica XMLs<br/>Mapping, Workflow, Session, Worklet]
+    end
+    
+    subgraph "Deterministic Processing Layer"
+        Parser[Parsers<br/>Mapping, Workflow, Session, Worklet]
+        Normalizer[Normalizer<br/>Canonical Model Builder]
+        Translator[Translators<br/>PySpark, SQL, Expression AST]
+        Generator[Code Generators<br/>PySpark, DLT, SQL, Spec, Tests]
+        DAG[DAG Builder<br/>Topological Sort, Cycle Detection]
+    end
+    
+    subgraph "AI Enhancement Layer"
+        AIEnhance[AI Enhancement Agents<br/>Model Enhancement, Validation<br/>Enhance Canonical Model]
+        AIReview[AI Review Agents<br/>Code Fix, Risk Assessment<br/>Review Generated Code]
+        LLM[AI & LLM Layer<br/>OpenAI, Azure, Local<br/>LLM Manager]
+    end
+    
+    subgraph "Storage Layer"
+        VersionStore[Version Store<br/>JSON + Neo4j Graph<br/>Graph-First Mode]
+        GraphStore[Graph Store<br/>Neo4j<br/>Cross-Mapping Lineage<br/>Impact Analysis]
+    end
+    
+    subgraph "API & Frontend Layer"
+        API[REST API<br/>FastAPI<br/>+ Graph Query Endpoints]
+        Frontend[Frontend UI<br/>React + Vite]
+    end
+    
+    subgraph "Supporting Services"
+        Services[Supporting Services<br/>Connectors, Catalog, Notifications]
+    end
+    
+    %% Main Flow
+    XML -->|Parse| Parser
+    Parser -->|Build Model| Normalizer
+    Normalizer -->|Canonical Model| AIEnhance
+    AIEnhance -->|Enhanced Model| Translator
+    Translator -->|Translate| Generator
+    Generator -->|Generated Code| AIReview
+    
+    %% Storage Flow
+    AIEnhance -->|Save| VersionStore
+    VersionStore -->|Dual-Write| GraphStore
+    VersionStore -->|Read| API
+    GraphStore -->|Graph Queries| API
+    
+    %% API Flow
+    API -->|Serve| Frontend
+    Generator -->|Code| API
+    AIReview -->|Reviewed Code| API
+    DAG -->|DAG Data| API
+    Services -->|Services| API
+    
+    %% DAG Flow
+    Normalizer -->|Workflow Data| DAG
+    
+    %% AI Flow
+    LLM -->|LLM Services| AIEnhance
+    LLM -->|LLM Services| AIReview
+    
+    %% Styling
+    classDef deterministic fill:#999999,stroke:#666666,stroke-width:2px,color:#fff
+    classDef ai fill:#e1d5e7,stroke:#9673a6,stroke-width:2px,color:#000
+    classDef graph fill:#d5e8d4,stroke:#82b366,stroke-width:2px,color:#000
+    classDef api fill:#999999,stroke:#666666,stroke-width:2px,color:#fff
+    
+    class Parser,Normalizer,Translator,Generator,DAG,Services deterministic
+    class AIEnhance,AIReview,LLM ai
+    class VersionStore,GraphStore graph
+    class API,Frontend api
+
