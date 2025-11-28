@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import apiClient from '../services/api';
 
 export default function UploadPage() {
@@ -7,6 +7,51 @@ export default function UploadPage() {
   const [uploadResult, setUploadResult] = useState(null);
   const [error, setError] = useState(null);
   const [enhanceModel, setEnhanceModel] = useState(true);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [selectedFileId, setSelectedFileId] = useState(null);
+  const [uploadMode, setUploadMode] = useState('upload'); // 'upload' or 'select'
+
+  useEffect(() => {
+    loadUploadedFiles();
+  }, []);
+
+  useEffect(() => {
+    if (selectedFileId) {
+      loadFileInfo(selectedFileId);
+    }
+  }, [selectedFileId]);
+
+  const loadUploadedFiles = async () => {
+    setLoadingFiles(true);
+    try {
+      const result = await apiClient.listAllFiles();
+      if (result.success) {
+        setUploadedFiles(result.files || []);
+      }
+    } catch (err) {
+      console.error('Error loading files:', err);
+    } finally {
+      setLoadingFiles(false);
+    }
+  };
+
+  const loadFileInfo = async (fileId) => {
+    try {
+      const fileInfo = await apiClient.getFileInfo(fileId);
+      setUploadResult({
+        file_id: fileInfo.file_id,
+        filename: fileInfo.filename,
+        file_size: fileInfo.file_size,
+        file_type: fileInfo.file_type,
+        uploaded_at: fileInfo.uploaded_at
+      });
+      setError(null);
+    } catch (err) {
+      setError(err.message || 'Failed to load file info');
+      console.error('Error loading file info:', err);
+    }
+  };
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -75,34 +120,138 @@ export default function UploadPage() {
     }
   };
 
+  const getFileTypeColor = (type) => {
+    const colors = {
+      'mapping': '#4A90E2',
+      'workflow': '#50C878',
+      'session': '#FFA500',
+      'worklet': '#9B59B6',
+      'unknown': '#95A5A6'
+    };
+    return colors[type] || colors.unknown;
+  };
+
+  const getFileTypeIcon = (type) => {
+    const icons = {
+      'mapping': '📋',
+      'workflow': '🔄',
+      'session': '⚙️',
+      'worklet': '📦',
+      'unknown': '❓'
+    };
+    return icons[type] || icons.unknown;
+  };
+
   return (
-    <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
-      <h2>Upload Informatica XML</h2>
+    <div style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto' }}>
+      <h2>Upload & Parse Informatica XML</h2>
       
-      <div style={{ marginBottom: '20px' }}>
-        <input
-          type="file"
-          accept=".xml"
-          onChange={handleFileChange}
-          disabled={uploading}
-          style={{ marginBottom: '10px' }}
-        />
-        <br />
+      {/* Mode Selection */}
+      <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', borderBottom: '2px solid #ddd', paddingBottom: '15px' }}>
         <button
-          onClick={handleUpload}
-          disabled={!file || uploading}
+          onClick={() => {
+            setUploadMode('upload');
+            setSelectedFileId(null);
+            setUploadResult(null);
+            setFile(null);
+          }}
           style={{
             padding: '10px 20px',
-            backgroundColor: '#007bff',
-            color: 'white',
+            backgroundColor: uploadMode === 'upload' ? '#007bff' : '#f5f5f5',
+            color: uploadMode === 'upload' ? 'white' : '#333',
             border: 'none',
             borderRadius: '4px',
-            cursor: uploading ? 'not-allowed' : 'pointer'
+            cursor: 'pointer',
+            fontWeight: uploadMode === 'upload' ? 'bold' : 'normal'
           }}
         >
-          {uploading ? 'Uploading...' : 'Upload File'}
+          📤 Upload New File
+        </button>
+        <button
+          onClick={() => {
+            setUploadMode('select');
+            setFile(null);
+            loadUploadedFiles();
+          }}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: uploadMode === 'select' ? '#007bff' : '#f5f5f5',
+            color: uploadMode === 'select' ? 'white' : '#333',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: uploadMode === 'select' ? 'bold' : 'normal'
+          }}
+        >
+          📁 Select from Uploaded Files
         </button>
       </div>
+
+      {/* Upload Mode */}
+      {uploadMode === 'upload' && (
+        <div style={{ marginBottom: '20px' }}>
+          <input
+            type="file"
+            accept=".xml"
+            onChange={handleFileChange}
+            disabled={uploading}
+            style={{ marginBottom: '10px', padding: '8px', width: '100%', maxWidth: '400px' }}
+          />
+          <br />
+          <button
+            onClick={handleUpload}
+            disabled={!file || uploading}
+            style={{
+              padding: '10px 20px',
+              backgroundColor: '#007bff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: uploading ? 'not-allowed' : 'pointer',
+              opacity: (!file || uploading) ? 0.6 : 1
+            }}
+          >
+            {uploading ? 'Uploading...' : 'Upload File'}
+          </button>
+        </div>
+      )}
+
+      {/* Select Mode */}
+      {uploadMode === 'select' && (
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ display: 'block', marginBottom: '10px', fontWeight: 'bold' }}>
+            Select Uploaded File:
+          </label>
+          {loadingFiles ? (
+            <div style={{ padding: '20px', textAlign: 'center' }}>Loading files...</div>
+          ) : uploadedFiles.length === 0 ? (
+            <div style={{ padding: '20px', background: '#fff3cd', borderRadius: '4px', color: '#856404' }}>
+              No files uploaded yet. Switch to "Upload New File" mode to upload files.
+            </div>
+          ) : (
+            <select
+              value={selectedFileId || ''}
+              onChange={(e) => setSelectedFileId(e.target.value)}
+              style={{
+                padding: '10px',
+                width: '100%',
+                maxWidth: '500px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '14px',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="">-- Select a file --</option>
+              {uploadedFiles.map((f) => (
+                <option key={f.file_id} value={f.file_id}>
+                  {getFileTypeIcon(f.file_type)} {f.filename} ({f.file_type}) - {new Date(f.uploaded_at).toLocaleDateString()}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
 
       {error && (
         <div style={{
@@ -121,16 +270,55 @@ export default function UploadPage() {
           padding: '15px',
           backgroundColor: '#d4edda',
           borderRadius: '4px',
-          marginBottom: '10px'
+          marginBottom: '10px',
+          border: '2px solid #28a745'
         }}>
-          <h3>Upload Successful</h3>
-          <p><strong>File ID:</strong> {uploadResult.file_id}</p>
-          <p><strong>Filename:</strong> {uploadResult.filename}</p>
-          <p><strong>File Size:</strong> {(uploadResult.file_size / 1024).toFixed(2)} KB</p>
-          <p><strong>File Type:</strong> {uploadResult.file_type}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+            <span style={{ fontSize: '24px' }}>{getFileTypeIcon(uploadResult.file_type)}</span>
+            <h3 style={{ margin: 0 }}>
+              {uploadMode === 'select' ? 'File Selected' : 'Upload Successful'}
+            </h3>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginBottom: '15px' }}>
+            <div>
+              <strong>File ID:</strong> 
+              <div style={{ 
+                fontFamily: 'monospace', 
+                fontSize: '12px', 
+                background: '#f8f9fa', 
+                padding: '4px 8px', 
+                borderRadius: '4px',
+                marginTop: '4px',
+                wordBreak: 'break-all'
+              }}>
+                {uploadResult.file_id}
+              </div>
+            </div>
+            <div>
+              <strong>Filename:</strong> 
+              <div style={{ marginTop: '4px' }}>{uploadResult.filename}</div>
+            </div>
+            <div>
+              <strong>File Size:</strong> {(uploadResult.file_size / 1024).toFixed(2)} KB
+            </div>
+            <div>
+              <strong>File Type:</strong>
+              <span style={{
+                marginLeft: '8px',
+                padding: '4px 10px',
+                background: getFileTypeColor(uploadResult.file_type),
+                color: 'white',
+                borderRadius: '4px',
+                fontSize: '12px',
+                fontWeight: 'bold'
+              }}>
+                {uploadResult.file_type}
+              </span>
+            </div>
+          </div>
           
           {uploadResult.file_type === 'mapping' && (
-            <div style={{ marginTop: '15px' }}>
+            <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #28a745' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                 <input
                   type="checkbox"
@@ -152,10 +340,36 @@ export default function UploadPage() {
                   border: 'none',
                   borderRadius: '4px',
                   cursor: uploading ? 'not-allowed' : 'pointer',
-                  opacity: uploading ? 0.6 : 1
+                  opacity: uploading ? 0.6 : 1,
+                  fontWeight: 'bold'
                 }}
               >
                 {uploading ? 'Parsing...' : 'Parse Mapping'}
+              </button>
+            </div>
+          )}
+
+          {uploadResult.file_type === 'workflow' && (
+            <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #28a745' }}>
+              <p style={{ marginBottom: '10px', fontSize: '14px', color: '#666' }}>
+                Workflow files can be parsed and visualized in the <strong>Lineage</strong> tab.
+              </p>
+              <button
+                onClick={() => {
+                  localStorage.setItem('lastUploadedFileId', uploadResult.file_id);
+                  alert('File ID saved! Go to the Lineage tab to view the DAG.');
+                }}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#50C878',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                Use in Lineage Viewer
               </button>
             </div>
           )}
