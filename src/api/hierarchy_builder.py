@@ -111,7 +111,18 @@ class HierarchyBuilder:
         try:
             parser = WorkletParser(file_path)
             worklet_data = parser.parse()
-            worklet_name = worklet_data.get("name", "unknown")
+            
+            # Handle empty dict or missing name
+            if not worklet_data or not worklet_data.get("name"):
+                # Try to extract from filename as fallback
+                from pathlib import Path
+                filename = Path(file_path).stem
+                worklet_name = filename.replace("worklet_", "").replace("_", " ").upper()
+                if not worklet_name or worklet_name == filename:
+                    worklet_name = f"Worklet_{file_id[:8]}"
+                logger.warning(f"Worklet name not found in XML, using: {worklet_name}")
+            else:
+                worklet_name = worklet_data.get("name", "unknown")
             
             self.worklets[worklet_name] = {
                 "name": worklet_name,
@@ -123,32 +134,69 @@ class HierarchyBuilder:
             
             # Extract session references from tasks
             for task in worklet_data.get("tasks", []):
-                if task.get("type") == "Session":
-                    self.worklets[worklet_name]["sessions"].append(task.get("name", ""))
+                task_type = task.get("type", "")
+                if task_type and ("Session" in task_type or task_type == "Session"):
+                    session_name = task.get("name", "")
+                    if session_name:
+                        self.worklets[worklet_name]["sessions"].append(session_name)
             
             logger.debug(f"Parsed worklet: {worklet_name}")
         except Exception as e:
             logger.error(f"Failed to parse worklet {file_path}: {str(e)}")
+            # Create a placeholder entry
+            from pathlib import Path
+            filename = Path(file_path).stem
+            worklet_name = filename.replace("worklet_", "").replace("_", " ").upper() or f"Worklet_{file_id[:8]}"
+            self.worklets[worklet_name] = {
+                "name": worklet_name,
+                "file_id": file_id,
+                "file_path": file_path,
+                "tasks": [],
+                "sessions": []
+            }
     
     def _parse_session(self, file_id: str, file_path: str):
         """Parse session file."""
         try:
             parser = SessionParser(file_path)
             session_data = parser.parse()
-            session_name = session_data.get("name", "unknown")
-            mapping_name = session_data.get("mapping")
+            
+            # Handle empty dict or missing name
+            if not session_data or not session_data.get("name"):
+                # Try to extract from filename as fallback
+                from pathlib import Path
+                filename = Path(file_path).stem
+                session_name = filename.replace("session_", "").replace("_", " ").upper()
+                if not session_name or session_name == filename:
+                    session_name = f"Session_{file_id[:8]}"
+                logger.warning(f"Session name not found in XML, using: {session_name}")
+            else:
+                session_name = session_data.get("name", "unknown")
+            
+            mapping_name = session_data.get("mapping") if session_data else None
             
             self.sessions[session_name] = {
                 "name": session_name,
                 "file_id": file_id,
                 "file_path": file_path,
                 "mapping_name": mapping_name,
-                "config": session_data.get("config", {})
+                "config": session_data.get("config", {}) if session_data else {}
             }
             
             logger.debug(f"Parsed session: {session_name} -> mapping: {mapping_name}")
         except Exception as e:
             logger.error(f"Failed to parse session {file_path}: {str(e)}")
+            # Create a placeholder entry
+            from pathlib import Path
+            filename = Path(file_path).stem
+            session_name = filename.replace("session_", "").replace("_", " ").upper() or f"Session_{file_id[:8]}"
+            self.sessions[session_name] = {
+                "name": session_name,
+                "file_id": file_id,
+                "file_path": file_path,
+                "mapping_name": None,
+                "config": {}
+            }
     
     def _parse_mapping(self, file_id: str, file_path: str):
         """Parse mapping file."""

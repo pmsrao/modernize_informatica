@@ -153,6 +153,12 @@ export default function GraphExplorerPage() {
     try {
       const result = await apiClient.getMappingStructure(mappingName);
       if (result.success && result.graph) {
+        console.log('Graph data received:', {
+          nodes: result.graph.nodes.length,
+          edges: result.graph.edges.length,
+          edges_sample: result.graph.edges.slice(0, 3)
+        });
+        
         // Convert to React Flow format
         const nodes = result.graph.nodes.map((node, idx) => ({
           id: node.id,
@@ -165,10 +171,12 @@ export default function GraphExplorerPage() {
           // Determine edge style based on type
           let edgeColor = '#666';
           let edgeWidth = 2;
+          let isAnimated = false;
           
           if (edge.type === 'flows_to' || edge.label === 'FLOWS_TO') {
             edgeColor = '#4A90E2';
             edgeWidth = 3;
+            isAnimated = true;
           } else if (edge.type === 'has_source' || edge.label === 'HAS_SOURCE') {
             edgeColor = '#50C878';
             edgeWidth = 2;
@@ -185,7 +193,7 @@ export default function GraphExplorerPage() {
             source: edge.source,
             target: edge.target,
             type: 'smoothstep',
-            animated: edge.type === 'flows_to' || edge.label === 'FLOWS_TO',
+            animated: isAnimated,
             markerEnd: {
               type: MarkerType.ArrowClosed,
             },
@@ -199,11 +207,17 @@ export default function GraphExplorerPage() {
           };
         });
 
+        console.log('Processed edges:', edges.length, 'edges created');
+        console.log('Sample edges:', edges.slice(0, 5));
+
         // Simple layout: hierarchical
         layoutNodes(nodes, edges);
         
         setGraphData({ nodes, edges });
         setView('graph');
+      } else {
+        console.error('No graph data in response:', result);
+        setError('No graph data received from server');
       }
     } catch (err) {
       setError(err.message || 'Failed to load mapping structure');

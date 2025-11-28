@@ -1664,11 +1664,16 @@ async def get_mapping_structure(mapping_name: str):
         # Process connectors to build data flow edges
         edge_set = set()  # Track edges to avoid duplicates
         
+        logger.debug(f"Processing {len(connectors)} connectors for mapping {mapping_name}")
+        
         for conn in connectors:
-            from_trans = conn.get("from_transformation", "")
-            to_trans = conn.get("to_transformation", "")
-            from_port = conn.get("from_port", "")
-            to_port = conn.get("to_port", "")
+            from_trans = conn.get("from_transformation", "") or conn.get("from", "")
+            to_trans = conn.get("to_transformation", "") or conn.get("to", "")
+            from_port = conn.get("from_port", "") or conn.get("from_port", "")
+            to_port = conn.get("to_port", "") or conn.get("to_port", "")
+            
+            if not from_trans or not to_trans:
+                continue
             
             # Check if from_trans is a source
             if from_trans in source_map:
@@ -1685,6 +1690,7 @@ async def get_mapping_structure(mapping_name: str):
                             "label": "FLOWS_TO"
                         })
                         edge_set.add(edge_id)
+                        logger.debug(f"Added edge: {from_trans} -> {to_trans}")
             
             # Check if to_trans is a target
             elif to_trans in target_map:
@@ -1701,6 +1707,7 @@ async def get_mapping_structure(mapping_name: str):
                             "label": "FLOWS_TO"
                         })
                         edge_set.add(edge_id)
+                        logger.debug(f"Added edge: {from_trans} -> {to_trans}")
             
             # Transformation to transformation
             elif from_trans in transformation_map and to_trans in transformation_map:
@@ -1720,6 +1727,9 @@ async def get_mapping_structure(mapping_name: str):
                         }
                     })
                     edge_set.add(edge_id)
+                    logger.debug(f"Added edge: {from_trans} -> {to_trans}")
+        
+        logger.debug(f"Created {len(edges)} total edges (including structural edges)")
         
         # Also use lineage information if connectors are missing
         if not connectors and canonical_model.get("lineage"):
