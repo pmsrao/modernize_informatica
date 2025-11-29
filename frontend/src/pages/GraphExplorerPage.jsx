@@ -209,6 +209,7 @@ export default function GraphExplorerPage() {
 
         console.log('Processed edges:', edges.length, 'edges created');
         console.log('Sample edges:', edges.slice(0, 5));
+        console.log('Edge details:', edges.map(e => ({ id: e.id, source: e.source, target: e.target, type: e.type })).slice(0, 10));
 
         // Simple layout: hierarchical
         layoutNodes(nodes, edges);

@@ -214,18 +214,63 @@ class GraphStore:
             """, name=trans_name, mapping=mapping_name, props=trans_props)
         
         # 5. Create Connector relationships
+        logger.debug(f"Creating {len(model.get('connectors', []))} connector relationships")
         for conn in model.get("connectors", []):
             from_trans = conn.get("from_transformation", "")
             to_trans = conn.get("to_transformation", "")
+            from_port = conn.get("from_port", "")
+            to_port = conn.get("to_port", "")
             
-            if from_trans and to_trans:
+            if not from_trans or not to_trans:
+                continue
+            
+            # Check if from_trans is a Source
+            source_result = tx.run("""
+                MATCH (s:Source {name: $from_trans, mapping: $mapping})
+                RETURN s
+                LIMIT 1
+            """, from_trans=from_trans, mapping=mapping_name)
+            
+            if source_result.single():
+                # Source -> Transformation
                 tx.run("""
-                    MATCH (t1:Transformation {name: $from_trans, mapping: $mapping})
-                    MATCH (t2:Transformation {name: $to_trans, mapping: $mapping})
-                    MERGE (t1)-[r:CONNECTS_TO {from_port: $from_port, to_port: $to_port}]->(t2)
+                    MATCH (s:Source {name: $from_trans, mapping: $mapping})
+                    MATCH (t:Transformation {name: $to_trans, mapping: $mapping})
+                    MERGE (s)-[r:CONNECTS_TO]->(t)
+                    SET r.from_port = $from_port, r.to_port = $to_port
                 """, from_trans=from_trans, to_trans=to_trans, mapping=mapping_name,
-                      from_port=conn.get("from_port", ""),
-                      to_port=conn.get("to_port", ""))
+                      from_port=from_port, to_port=to_port)
+                logger.debug(f"Created Source->Transformation connector: {from_trans} -> {to_trans}")
+                continue
+            
+            # Check if to_trans is a Target
+            target_result = tx.run("""
+                MATCH (t:Target {name: $to_trans, mapping: $mapping})
+                RETURN t
+                LIMIT 1
+            """, to_trans=to_trans, mapping=mapping_name)
+            
+            if target_result.single():
+                # Transformation -> Target
+                tx.run("""
+                    MATCH (trans:Transformation {name: $from_trans, mapping: $mapping})
+                    MATCH (t:Target {name: $to_trans, mapping: $mapping})
+                    MERGE (trans)-[r:CONNECTS_TO]->(t)
+                    SET r.from_port = $from_port, r.to_port = $to_port
+                """, from_trans=from_trans, to_trans=to_trans, mapping=mapping_name,
+                      from_port=from_port, to_port=to_port)
+                logger.debug(f"Created Transformation->Target connector: {from_trans} -> {to_trans}")
+                continue
+            
+            # Transformation -> Transformation
+            tx.run("""
+                MATCH (t1:Transformation {name: $from_trans, mapping: $mapping})
+                MATCH (t2:Transformation {name: $to_trans, mapping: $mapping})
+                MERGE (t1)-[r:CONNECTS_TO]->(t2)
+                SET r.from_port = $from_port, r.to_port = $to_port
+            """, from_trans=from_trans, to_trans=to_trans, mapping=mapping_name,
+                  from_port=from_port, to_port=to_port)
+            logger.debug(f"Created Transformation->Transformation connector: {from_trans} -> {to_trans}")
     
     def load_mapping(self, mapping_name: str) -> Optional[Dict[str, Any]]:
         """Load canonical model from Neo4j.
