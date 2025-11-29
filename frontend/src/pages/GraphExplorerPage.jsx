@@ -321,11 +321,21 @@ export default function GraphExplorerPage() {
     Object.keys(nodesByLevel).sort((a, b) => parseInt(a) - parseInt(b)).forEach(level => {
       const levelNodes = nodesByLevel[level];
       levelNodes.forEach((node, idx) => {
-        node.position = {
-          x: startX + parseInt(level) * levelWidth,
-          y: startY + idx * verticalSpacing
-        };
+        // Ensure position is set (React Flow requires valid positions)
+        if (!node.position) {
+          node.position = { x: 0, y: 0 };
+        }
+        node.position.x = startX + parseInt(level) * levelWidth;
+        node.position.y = startY + idx * verticalSpacing;
       });
+    });
+    
+    // Ensure all nodes have valid positions
+    nodes.forEach(node => {
+      if (!node.position || (node.position.x === 0 && node.position.y === 0 && node.type !== 'mapping')) {
+        // Default position if not set
+        node.position = { x: 100, y: 100 };
+      }
     });
   };
 
@@ -526,11 +536,13 @@ export default function GraphExplorerPage() {
                   edgeTypes={{}}
                   onNodeClick={handleNodeClick}
                   fitView
+                  fitViewOptions={{ padding: 0.2 }}
                   style={{ background: '#fafafa' }}
                   defaultEdgeOptions={{
                     animated: true,
-                    style: { strokeWidth: 2 }
+                    style: { strokeWidth: 4, stroke: '#4A90E2' }
                   }}
+                  connectionLineStyle={{ stroke: '#4A90E2', strokeWidth: 2 }}
                 >
                   <Background />
                   <Controls />
