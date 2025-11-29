@@ -201,8 +201,10 @@ def main():
     )
     parser.add_argument(
         "--files",
+        "--uploads",
+        dest="files",
         action="store_true",
-        help="Clean up uploaded XML files"
+        help="Clean up uploaded XML files (--files or --uploads)"
     )
     parser.add_argument(
         "--version-store",
