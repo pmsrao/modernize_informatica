@@ -162,6 +162,62 @@ class FileManager:
         
         return "unknown"
     
+    def _rebuild_registry_from_disk(self):
+        """Rebuild file registry by scanning disk files.
+        
+        This ensures that files uploaded before server restart are still accessible.
+        """
+        if not self.upload_dir.exists():
+            return
+        
+        logger.info("Rebuilding file registry from disk...")
+        files_on_disk = list(self.upload_dir.glob("*"))
+        
+        for file_path in files_on_disk:
+            if not file_path.is_file():
+                continue
+            
+            # Extract file_id from filename (format: {file_id}.xml)
+            file_id = file_path.stem  # Gets filename without extension
+            
+            # Skip if already in registry
+            if file_id in self.file_registry:
+                continue
+            
+            # Try to determine file type from filename
+            filename = file_path.name
+            try:
+                # Read a small portion to detect type
+                with open(file_path, 'rb') as f:
+                    content_sample = f.read(1000)
+                file_type = self._detect_file_type(filename, content_sample)
+            except Exception as e:
+                logger.warning(f"Could not detect type for {filename}: {e}")
+                file_type = "unknown"
+            
+            # Reconstruct metadata
+            try:
+                stat = file_path.stat()
+                metadata = {
+                    "file_id": file_id,
+                    "filename": filename,
+                    "file_path": str(file_path),
+                    "file_size": stat.st_size,
+                    "file_type": file_type,
+                    "uploaded_at": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                }
+                self.file_registry[file_id] = metadata
+                logger.debug(f"Rebuilt registry entry for: {filename}")
+            except Exception as e:
+                logger.warning(f"Could not rebuild metadata for {filename}: {e}")
+        
+        logger.info(f"Registry rebuilt: {len(self.file_registry)} files found on disk")
+    
+    def clear_registry(self):
+        """Clear the file registry (useful for testing/cleanup)."""
+        self.file_registry.clear()
+        logger.info("File registry cleared")
+    
     def list_all_files(self) -> list:
         """List all uploaded files with metadata.
         
