@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<WORKLET NAME="WK_INGEST_FROM_ORACLE">
+  <!-- Ingestion Worklet: Extract data from Oracle source database
+       All sessions can run in parallel for performance -->
+  
+  <!-- Customer data ingestion -->
+  <TASKINSTANCE NAME="S_M_INGEST_CUSTOMERS" TASKTYPE="Session"/>
+  
+  <!-- Order data ingestion -->
+  <TASKINSTANCE NAME="S_M_INGEST_ORDERS" TASKTYPE="Session"/>
+  
+  <!-- Product data ingestion -->
+  <TASKINSTANCE NAME="S_M_INGEST_PRODUCTS" TASKTYPE="Session"/>
+  
+  <!-- Payment data ingestion -->
+  <TASKINSTANCE NAME="S_M_INGEST_PAYMENTS" TASKTYPE="Session"/>
+  
+  <!-- Shipping data ingestion -->
+  <TASKINSTANCE NAME="S_M_INGEST_SHIPPING" TASKTYPE="Session"/>
+  
+  <!-- All ingestion sessions run in parallel (no connectors between them) -->
+  <!-- They all must succeed before moving to staging -->
+  
+</WORKLET>
+

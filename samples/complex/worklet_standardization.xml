@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<WORKLET NAME="WK_STANDARDIZE_DATA">
+  <!-- Standardization Worklet: Clean, validate, and standardize data
+       Apply business rules and data quality checks -->
+  
+  <!-- Standardize customer data -->
+  <TASKINSTANCE NAME="S_M_STD_CUSTOMER_DATA" TASKTYPE="Session"/>
+  
+  <!-- Standardize order data -->
+  <TASKINSTANCE NAME="S_M_STD_ORDER_DATA" TASKTYPE="Session"/>
+  
+  <!-- Standardize product data -->
+  <TASKINSTANCE NAME="S_M_STD_PRODUCT_DATA" TASKTYPE="Session"/>
+  
+  <!-- Data quality validation (runs after standardization) -->
+  <TASKINSTANCE NAME="S_M_DQ_VALIDATION" TASKTYPE="Session"/>
+  
+  <!-- Dependencies: All standardization must complete before validation -->
+  <CONNECTOR FROMINSTANCE="S_M_STD_CUSTOMER_DATA" FROMLINK="Success" TOINSTANCE="S_M_DQ_VALIDATION" TOLINK="Start"/>
+  <CONNECTOR FROMINSTANCE="S_M_STD_ORDER_DATA" FROMLINK="Success" TOINSTANCE="S_M_DQ_VALIDATION" TOLINK="Start"/>
+  <CONNECTOR FROMINSTANCE="S_M_STD_PRODUCT_DATA" FROMLINK="Success" TOINSTANCE="S_M_DQ_VALIDATION" TOLINK="Start"/>
+  
+</WORKLET>
+

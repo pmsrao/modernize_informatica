@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<WORKLET NAME="WK_STAGE_DATA">
+  <!-- Staging Worklet: Load raw data into staging tables
+       Some dependencies exist due to referential integrity -->
+  
+  <!-- Stage customer data (independent) -->
+  <TASKINSTANCE NAME="S_M_STAGE_CUSTOMERS" TASKTYPE="Session"/>
+  
+  <!-- Stage product data (independent) -->
+  <TASKINSTANCE NAME="S_M_STAGE_PRODUCTS" TASKTYPE="Session"/>
+  
+  <!-- Stage order data (depends on customers and products) -->
+  <TASKINSTANCE NAME="S_M_STAGE_ORDERS" TASKTYPE="Session"/>
+  
+  <!-- Stage payment data (depends on orders) -->
+  <TASKINSTANCE NAME="S_M_STAGE_PAYMENTS" TASKTYPE="Session"/>
+  
+  <!-- Stage shipping data (depends on orders) -->
+  <TASKINSTANCE NAME="S_M_STAGE_SHIPPING" TASKTYPE="Session"/>
+  
+  <!-- Dependencies: Orders need Customers and Products first -->
+  <CONNECTOR FROMINSTANCE="S_M_STAGE_CUSTOMERS" FROMLINK="Success" TOINSTANCE="S_M_STAGE_ORDERS" TOLINK="Start"/>
+  <CONNECTOR FROMINSTANCE="S_M_STAGE_PRODUCTS" FROMLINK="Success" TOINSTANCE="S_M_STAGE_ORDERS" TOLINK="Start"/>
+  
+  <!-- Payments and Shipping depend on Orders -->
+  <CONNECTOR FROMINSTANCE="S_M_STAGE_ORDERS" FROMLINK="Success" TOINSTANCE="S_M_STAGE_PAYMENTS" TOLINK="Start"/>
+  <CONNECTOR FROMINSTANCE="S_M_STAGE_ORDERS" FROMLINK="Success" TOINSTANCE="S_M_STAGE_SHIPPING" TOLINK="Start"/>
+  
+</WORKLET>
+

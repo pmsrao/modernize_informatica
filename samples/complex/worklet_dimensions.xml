@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<WORKLET NAME="WK_LOAD_DIMENSIONS">
+  <!-- Dimensional Layer Worklet: Load dimensions and fact tables
+       Dimensions can load in parallel, fact depends on dimensions -->
+  
+  <!-- Dimension loads (can run in parallel) -->
+  <TASKINSTANCE NAME="S_M_LOAD_CUSTOMER_DIM" TASKTYPE="Session"/>
+  <TASKINSTANCE NAME="S_M_LOAD_PRODUCT_DIM" TASKTYPE="Session"/>
+  <TASKINSTANCE NAME="S_M_LOAD_DATE_DIM" TASKTYPE="Session"/>
+  <TASKINSTANCE NAME="S_M_LOAD_REGION_DIM" TASKTYPE="Session"/>
+  
+  <!-- Fact table load (depends on all dimensions) -->
+  <TASKINSTANCE NAME="S_M_LOAD_ORDER_FACT" TASKTYPE="Session"/>
+  
+  <!-- All dimensions must complete before fact load -->
+  <CONNECTOR FROMINSTANCE="S_M_LOAD_CUSTOMER_DIM" FROMLINK="Success" TOINSTANCE="S_M_LOAD_ORDER_FACT" TOLINK="Start"/>
+  <CONNECTOR FROMINSTANCE="S_M_LOAD_PRODUCT_DIM" FROMLINK="Success" TOINSTANCE="S_M_LOAD_ORDER_FACT" TOLINK="Start"/>
+  <CONNECTOR FROMINSTANCE="S_M_LOAD_DATE_DIM" FROMLINK="Success" TOINSTANCE="S_M_LOAD_ORDER_FACT" TOLINK="Start"/>
+  <CONNECTOR FROMINSTANCE="S_M_LOAD_REGION_DIM" FROMLINK="Success" TOINSTANCE="S_M_LOAD_ORDER_FACT" TOLINK="Start"/>
+  
+</WORKLET>
+
