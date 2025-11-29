@@ -213,6 +213,17 @@ export default function GraphExplorerPage() {
         // Simple layout: hierarchical
         layoutNodes(nodes, edges);
         
+        // Verify nodes have valid positions
+        console.log('Node positions after layout:', nodes.map(n => ({ id: n.id, pos: n.position })).slice(0, 5));
+        console.log('Edges to render:', edges.length);
+        console.log('Edge source/target validation:', edges.slice(0, 3).map(e => ({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          sourceExists: nodes.some(n => n.id === e.source),
+          targetExists: nodes.some(n => n.id === e.target)
+        })));
+        
         setGraphData({ nodes, edges });
         setView('graph');
       } else {

@@ -1509,8 +1509,13 @@ async def list_all_mappings():
             
             mappings = []
             for record in result:
+                # Filter out invalid/unknown mappings
+                mapping_name = record["name"]
+                if not mapping_name or mapping_name.lower() == "unknown" or mapping_name == "":
+                    continue
+                    
                 mappings.append({
-                    "name": record["name"],
+                    "name": mapping_name,
                     "mapping_name": record["mapping_name"],
                     "complexity": record["complexity"],
                     "source_count": record["source_count"],
