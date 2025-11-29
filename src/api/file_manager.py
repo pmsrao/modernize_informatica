@@ -20,6 +20,8 @@ class FileManager:
         self.upload_dir = Path(settings.upload_dir)
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         self.file_registry: Dict[str, Dict[str, Any]] = {}
+        # Rebuild registry from disk files on startup
+        self._rebuild_registry_from_disk()
     
     def save_uploaded_file(self, file_content: bytes, filename: str) -> Dict[str, Any]:
         """Save uploaded file and return metadata.

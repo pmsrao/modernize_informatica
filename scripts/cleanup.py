@@ -94,6 +94,14 @@ def cleanup_files(confirm: bool = False):
         except Exception as e:
             print(f"   ❌ Failed to delete {file_path.name}: {str(e)}")
     
+    # Also clear the file manager registry if API is running
+    try:
+        from src.api.file_manager import file_manager
+        file_manager.clear_registry()
+        print("   ✅ Cleared file manager registry")
+    except Exception as e:
+        print(f"   ⚠️  Could not clear file manager registry (API may not be running): {e}")
+    
     print(f"✅ File cleanup completed: {deleted_count}/{len(xml_files)} files deleted")
     return True
 
