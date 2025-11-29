@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<SESSION NAME="S_M_INGEST_CUSTOMERS" MAPPINGNAME="M_INGEST_CUSTOMERS">
+  <!-- Session: Ingest customer data from Oracle source -->
+  
+  <!-- Connection information -->
+  <ATTRIBUTE NAME="Connection" VALUE="ORACLE_SOURCE_DB"/>
+  <ATTRIBUTE NAME="Database Type" VALUE="ORACLE"/>
+  <ATTRIBUTE NAME="Username" VALUE="ETL_USER"/>
+  
+  <!-- Performance settings -->
+  <ATTRIBUTE NAME="Buffer Block Size" VALUE="65536"/>
+  <ATTRIBUTE NAME="Number Of Partitions" VALUE="4"/>
+  <ATTRIBUTE NAME="Partition Type" VALUE="Auto"/>
+  <ATTRIBUTE NAME="Commit Interval" VALUE="10000"/>
+  <ATTRIBUTE NAME="Commit Type" VALUE="Target"/>
+  
+  <!-- Error handling -->
+  <ATTRIBUTE NAME="Stop On Errors" VALUE="1000"/>
+  <ATTRIBUTE NAME="Override Tracing" VALUE="Normal"/>
+  
+  <!-- Source configuration -->
+  <SOURCE NAME="CUSTOMER_SRC">
+    <ATTRIBUTE NAME="Database Name" VALUE="ORACLE_SRC"/>
+    <ATTRIBUTE NAME="Table Name" VALUE="CUSTOMERS"/>
+    <ATTRIBUTE NAME="Fetch Size" VALUE="10000"/>
+  </SOURCE>
+  
+  <!-- Target configuration -->
+  <TARGET NAME="CUSTOMER_STAGING">
+    <ATTRIBUTE NAME="Database Name" VALUE="STAGING_DB"/>
+    <ATTRIBUTE NAME="Table Name" VALUE="STG_CUSTOMERS"/>
+    <ATTRIBUTE NAME="Insert" VALUE="YES"/>
+    <ATTRIBUTE NAME="Update" VALUE="NO"/>
+    <ATTRIBUTE NAME="Delete" VALUE="NO"/>
+  </TARGET>
+  
+</SESSION>
+

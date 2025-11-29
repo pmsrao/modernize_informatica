@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<WORKFLOW NAME="WF_CUSTOMER_ORDERS_ETL" VERSIONNUMBER="1">
+  <!-- Workflow Description: Complete ETL pipeline for Customer Orders
+       Flow: Ingestion -> Staging -> Standardization -> Dimensional Layer -->
+  
+  <!-- ============================================ -->
+  <!-- PHASE 1: INGESTION (Oracle DB Sources) -->
+  <!-- ============================================ -->
+  <TASKINSTANCE NAME="WK_INGESTION" TASKTYPE="Worklet" WORKLETNAME="WK_INGEST_FROM_ORACLE"/>
+  
+  <!-- ============================================ -->
+  <!-- PHASE 2: STAGING LAYER -->
+  <!-- ============================================ -->
+  <TASKINSTANCE NAME="WK_STAGING" TASKTYPE="Worklet" WORKLETNAME="WK_STAGE_DATA"/>
+  
+  <!-- ============================================ -->
+  <!-- PHASE 3: STANDARDIZATION LAYER -->
+  <!-- ============================================ -->
+  <TASKINSTANCE NAME="WK_STANDARDIZATION" TASKTYPE="Worklet" WORKLETNAME="WK_STANDARDIZE_DATA"/>
+  
+  <!-- ============================================ -->
+  <!-- PHASE 4: DIMENSIONAL LAYER -->
+  <!-- ============================================ -->
+  <TASKINSTANCE NAME="WK_DIMENSIONS" TASKTYPE="Worklet" WORKLETNAME="WK_LOAD_DIMENSIONS"/>
+  
+  <!-- ============================================ -->
+  <!-- CONNECTORS: Define execution flow -->
+  <!-- ============================================ -->
+  
+  <!-- Ingestion must complete before Staging -->
+  <CONNECTOR FROMINSTANCE="WK_INGESTION" FROMLINK="Success" TOINSTANCE="WK_STAGING" TOLINK="Start"/>
+  
+  <!-- Staging must complete before Standardization -->
+  <CONNECTOR FROMINSTANCE="WK_STAGING" FROMLINK="Success" TOINSTANCE="WK_STANDARDIZATION" TOLINK="Start"/>
+  
+  <!-- Standardization must complete before Dimensions -->
+  <CONNECTOR FROMINSTANCE="WK_STANDARDIZATION" FROMLINK="Success" TOINSTANCE="WK_DIMENSIONS" TOLINK="Start"/>
+  
+  <!-- Error handling: If ingestion fails, stop workflow -->
+  <CONNECTOR FROMINSTANCE="WK_INGESTION" FROMLINK="Failed" TOINSTANCE="WK_STAGING" TOLINK="Stop"/>
+  
+</WORKFLOW>
+
