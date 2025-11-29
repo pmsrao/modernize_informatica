@@ -20,40 +20,55 @@ const nodeTypes = {
       borderRadius: '8px',
       border: '2px solid #2E5C8A',
       minWidth: '150px',
+      textAlign: 'center',
+      fontWeight: 'bold',
       position: 'relative'
     }}>
       <Handle type="source" position={Position.Right} />
-      <div style={{ fontWeight: 'bold' }}>{data.label}</div>
+      <div>{data.label}</div>
+      <div style={{ fontSize: '10px', marginTop: '5px', opacity: 0.9 }}>
+        {data.complexity || 'Mapping'}
+      </div>
     </div>
   ),
   source: ({ data }) => (
     <div style={{
-      padding: '10px',
+      padding: '8px',
       background: '#50C878',
       color: 'white',
       borderRadius: '8px',
-      border: '2px solid #2E7D32',
+      border: '2px solid #2E7D4E',
       minWidth: '120px',
+      textAlign: 'center',
       position: 'relative'
     }}>
       <Handle type="source" position={Position.Right} />
-      <div style={{ fontWeight: 'bold' }}>{data.label}</div>
-      {data.table && <div style={{ fontSize: '10px', marginTop: '4px' }}>{data.table}</div>}
+      <div style={{ fontSize: '12px', fontWeight: 'bold' }}>{data.label}</div>
+      {data.table && (
+        <div style={{ fontSize: '10px', marginTop: '3px', opacity: 0.9 }}>
+          {data.table}
+        </div>
+      )}
     </div>
   ),
   target: ({ data }) => (
     <div style={{
-      padding: '10px',
+      padding: '8px',
       background: '#FF6B6B',
       color: 'white',
       borderRadius: '8px',
-      border: '2px solid #C62828',
+      border: '2px solid #C92A2A',
       minWidth: '120px',
+      textAlign: 'center',
       position: 'relative'
     }}>
       <Handle type="target" position={Position.Left} />
-      <div style={{ fontWeight: 'bold' }}>{data.label}</div>
-      {data.table && <div style={{ fontSize: '10px', marginTop: '4px' }}>{data.table}</div>}
+      <div style={{ fontSize: '12px', fontWeight: 'bold' }}>{data.label}</div>
+      {data.table && (
+        <div style={{ fontSize: '10px', marginTop: '3px', opacity: 0.9 }}>
+          {data.table}
+        </div>
+      )}
     </div>
   ),
   transformation: ({ data }) => (
@@ -76,85 +91,6 @@ const nodeTypes = {
       )}
     </div>
   )
-};
-      textAlign: 'center',
-      fontWeight: 'bold'
-    }}>
-      <div>{data.label}</div>
-      <div style={{ fontSize: '10px', marginTop: '5px', opacity: 0.9 }}>
-        {data.complexity || 'Mapping'}
-      </div>
-    </div>
-  ),
-  source: ({ data }) => (
-    <div style={{
-      padding: '8px',
-      background: '#50C878',
-      color: 'white',
-      borderRadius: '8px',
-      border: '2px solid #2E7D4E',
-      minWidth: '120px',
-      textAlign: 'center'
-    }}>
-      <div style={{ fontSize: '12px', fontWeight: 'bold' }}>{data.label}</div>
-      {data.table && (
-        <div style={{ fontSize: '10px', marginTop: '3px', opacity: 0.9 }}>
-          {data.table}
-        </div>
-      )}
-    </div>
-  ),
-  target: ({ data }) => (
-    <div style={{
-      padding: '8px',
-      background: '#FF6B6B',
-      color: 'white',
-      borderRadius: '8px',
-      border: '2px solid #C92A2A',
-      minWidth: '120px',
-      textAlign: 'center'
-    }}>
-      <div style={{ fontSize: '12px', fontWeight: 'bold' }}>{data.label}</div>
-      {data.table && (
-        <div style={{ fontSize: '10px', marginTop: '3px', opacity: 0.9 }}>
-          {data.table}
-        </div>
-      )}
-    </div>
-  ),
-  transformation: ({ data }) => {
-    const colors = {
-      'Expression': '#FFA500',
-      'Lookup': '#9B59B6',
-      'Aggregator': '#3498DB',
-      'Joiner': '#E74C3C',
-      'Router': '#1ABC9C',
-      'Filter': '#F39C12',
-      'Union': '#16A085',
-      'SourceQualifier': '#34495E',
-      'UpdateStrategy': '#E67E22',
-      'Sorter': '#95A5A6',
-      'Rank': '#D35400'
-    };
-    const bgColor = colors[data.transformation_type] || '#7F8C8D';
-    
-    return (
-      <div style={{
-        padding: '8px',
-        background: bgColor,
-        color: 'white',
-        borderRadius: '8px',
-        border: '2px solid #555',
-        minWidth: '120px',
-        textAlign: 'center'
-      }}>
-        <div style={{ fontSize: '12px', fontWeight: 'bold' }}>{data.label}</div>
-        <div style={{ fontSize: '10px', marginTop: '3px', opacity: 0.9 }}>
-          {data.transformation_type || 'Transformation'}
-        </div>
-      </div>
-    );
-  }
 };
 
 export default function GraphExplorerPage() {
