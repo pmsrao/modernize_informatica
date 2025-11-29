@@ -1556,6 +1556,38 @@ async def get_mapping_structure(mapping_name: str):
                 detail=f"Mapping not found: {mapping_name}"
             )
         
+        # Also query graph relationships directly to get all connections
+        with graph_store.driver.session() as session:
+            # Get all CONNECTS_TO relationships (Source->Trans, Trans->Trans, Trans->Target)
+            all_conns = session.run("""
+                MATCH (a)-[r:CONNECTS_TO]->(b)
+                WHERE (a:Source OR a:Transformation OR a:Target) 
+                  AND (b:Transformation OR b:Target)
+                  AND ((a:Source AND a.mapping = $name) OR 
+                       (a:Transformation AND a.mapping = $name) OR
+                       (a:Target AND a.mapping = $name))
+                  AND ((b:Transformation AND b.mapping = $name) OR
+                       (b:Target AND b.mapping = $name))
+                RETURN a.name as from, b.name as to, r.from_port as from_port, r.to_port as to_port
+            """, name=mapping_name)
+            
+            # Add these to connectors if not already present
+            existing_conns = {(c.get("from_transformation", ""), c.get("to_transformation", "")) 
+                             for c in canonical_model.get("connectors", [])}
+            
+            for record in all_conns:
+                from_trans = record["from"]
+                to_trans = record["to"]
+                if (from_trans, to_trans) not in existing_conns:
+                    canonical_model.setdefault("connectors", []).append({
+                        "from_transformation": from_trans,
+                        "to_transformation": to_trans,
+                        "from_port": record.get("from_port", ""),
+                        "to_port": record.get("to_port", "")
+                    })
+            
+            logger.info(f"Total connectors after graph query: {len(canonical_model.get('connectors', []))}")
+        
         # Build graph structure for visualization
         nodes = []
         edges = []

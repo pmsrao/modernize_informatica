@@ -328,13 +328,42 @@ class GraphStore:
                         trans_dict[key] = value
             model["transformations"].append(trans_dict)
         
-        # Load connectors
-        connectors_result = tx.run("""
+        # Load connectors from all relationship types
+        # Source -> Transformation
+        source_conns = tx.run("""
+            MATCH (s:Source {mapping: $name})-[r:CONNECTS_TO]->(t:Transformation {mapping: $name})
+            RETURN s.name as from, t.name as to, r.from_port as from_port, r.to_port as to_port
+        """, name=mapping_name)
+        
+        for record in source_conns:
+            model["connectors"].append({
+                "from_transformation": record["from"],
+                "to_transformation": record["to"],
+                "from_port": record.get("from_port", ""),
+                "to_port": record.get("to_port", "")
+            })
+        
+        # Transformation -> Target
+        target_conns = tx.run("""
+            MATCH (t:Transformation {mapping: $name})-[r:CONNECTS_TO]->(target:Target {mapping: $name})
+            RETURN t.name as from, target.name as to, r.from_port as from_port, r.to_port as to_port
+        """, name=mapping_name)
+        
+        for record in target_conns:
+            model["connectors"].append({
+                "from_transformation": record["from"],
+                "to_transformation": record["to"],
+                "from_port": record.get("from_port", ""),
+                "to_port": record.get("to_port", "")
+            })
+        
+        # Transformation -> Transformation
+        trans_conns = tx.run("""
             MATCH (t1:Transformation {mapping: $name})-[r:CONNECTS_TO]->(t2:Transformation {mapping: $name})
             RETURN t1.name as from, t2.name as to, r.from_port as from_port, r.to_port as to_port
         """, name=mapping_name)
         
-        for record in connectors_result:
+        for record in trans_conns:
             model["connectors"].append({
                 "from_transformation": record["from"],
                 "to_transformation": record["to"],
