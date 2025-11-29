@@ -4,7 +4,9 @@ import ReactFlow, {
   Controls, 
   MiniMap, 
   Panel,
-  MarkerType 
+  MarkerType,
+  Handle,
+  Position
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import apiClient from '../services/api.js';
@@ -18,6 +20,63 @@ const nodeTypes = {
       borderRadius: '8px',
       border: '2px solid #2E5C8A',
       minWidth: '150px',
+      position: 'relative'
+    }}>
+      <Handle type="source" position={Position.Right} />
+      <div style={{ fontWeight: 'bold' }}>{data.label}</div>
+    </div>
+  ),
+  source: ({ data }) => (
+    <div style={{
+      padding: '10px',
+      background: '#50C878',
+      color: 'white',
+      borderRadius: '8px',
+      border: '2px solid #2E7D32',
+      minWidth: '120px',
+      position: 'relative'
+    }}>
+      <Handle type="source" position={Position.Right} />
+      <div style={{ fontWeight: 'bold' }}>{data.label}</div>
+      {data.table && <div style={{ fontSize: '10px', marginTop: '4px' }}>{data.table}</div>}
+    </div>
+  ),
+  target: ({ data }) => (
+    <div style={{
+      padding: '10px',
+      background: '#FF6B6B',
+      color: 'white',
+      borderRadius: '8px',
+      border: '2px solid #C62828',
+      minWidth: '120px',
+      position: 'relative'
+    }}>
+      <Handle type="target" position={Position.Left} />
+      <div style={{ fontWeight: 'bold' }}>{data.label}</div>
+      {data.table && <div style={{ fontSize: '10px', marginTop: '4px' }}>{data.table}</div>}
+    </div>
+  ),
+  transformation: ({ data }) => (
+    <div style={{
+      padding: '10px',
+      background: '#666',
+      color: 'white',
+      borderRadius: '8px',
+      border: '2px solid #333',
+      minWidth: '150px',
+      position: 'relative'
+    }}>
+      <Handle type="target" position={Position.Left} />
+      <Handle type="source" position={Position.Right} />
+      <div style={{ fontWeight: 'bold' }}>{data.label}</div>
+      {data.transformation_type && (
+        <div style={{ fontSize: '10px', marginTop: '4px', opacity: 0.8 }}>
+          {data.transformation_type}
+        </div>
+      )}
+    </div>
+  )
+};
       textAlign: 'center',
       fontWeight: 'bold'
     }}>
