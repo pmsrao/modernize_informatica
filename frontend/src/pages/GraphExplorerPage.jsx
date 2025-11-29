@@ -167,43 +167,42 @@ export default function GraphExplorerPage() {
           position: { x: 0, y: 0 } // Will be calculated by layout
         }));
 
-        const edges = result.graph.edges.map((edge, idx) => {
-          // Determine edge style based on type
-          let edgeColor = '#666';
-          let edgeWidth = 2;
-          let isAnimated = false;
-          
-          if (edge.type === 'flows_to' || edge.label === 'FLOWS_TO') {
-            edgeColor = '#4A90E2';
-            edgeWidth = 3;
-            isAnimated = true;
-          } else if (edge.type === 'has_source' || edge.label === 'HAS_SOURCE') {
-            edgeColor = '#50C878';
-            edgeWidth = 2;
-          } else if (edge.type === 'has_target' || edge.label === 'HAS_TARGET') {
-            edgeColor = '#FF6B6B';
-            edgeWidth = 2;
-          } else if (edge.type === 'has_transformation' || edge.label === 'HAS_TRANSFORMATION') {
-            edgeColor = '#999';
-            edgeWidth = 1;
-          }
-          
+        // Filter to only show data flow edges (FLOWS_TO), hide structural edges
+        const dataFlowEdges = result.graph.edges.filter(edge => 
+          edge.type === 'flows_to' || edge.label === 'FLOWS_TO'
+        );
+        
+        const edges = dataFlowEdges.map((edge, idx) => {
+          // Data flow edges - make them prominent
           return {
             id: edge.id,
             source: edge.source,
             target: edge.target,
             type: 'smoothstep',
-            animated: isAnimated,
+            animated: true,
             markerEnd: {
               type: MarkerType.ArrowClosed,
+              width: 20,
+              height: 20,
+              color: '#4A90E2'
             },
             style: { 
-              stroke: edgeColor, 
-              strokeWidth: edgeWidth
+              stroke: '#4A90E2', 
+              strokeWidth: 4,
+              opacity: 0.8
             },
             label: edge.data?.from_port && edge.data?.to_port 
               ? `${edge.data.from_port} → ${edge.data.to_port}`
-              : edge.label || ''
+              : '',
+            labelStyle: {
+              fill: '#4A90E2',
+              fontWeight: 600,
+              fontSize: '11px'
+            },
+            labelBgStyle: {
+              fill: 'white',
+              fillOpacity: 0.8
+            }
           };
         });
 
@@ -288,14 +287,14 @@ export default function GraphExplorerPage() {
       }
     }
 
-    // Position mapping at top center
-    mappingNode.position = { x: 500, y: 50 };
+    // Position mapping at top center (but make it smaller/less prominent)
+    mappingNode.position = { x: 50, y: 50 };
 
     // Position nodes by level
-    const levelWidth = 250;
-    const startX = 100;
-    const startY = 200;
-    const verticalSpacing = 120;
+    const levelWidth = 300;
+    const startX = 200;
+    const startY = 150;
+    const verticalSpacing = 100;
 
     const nodesByLevel = {};
     nodes.forEach(node => {
