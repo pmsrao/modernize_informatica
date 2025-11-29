@@ -71,26 +71,42 @@ const nodeTypes = {
       )}
     </div>
   ),
-  transformation: ({ data }) => (
-    <div style={{
-      padding: '10px',
-      background: '#666',
-      color: 'white',
-      borderRadius: '8px',
-      border: '2px solid #333',
-      minWidth: '150px',
-      position: 'relative'
-    }}>
-      <Handle type="target" position={Position.Left} />
-      <Handle type="source" position={Position.Right} />
-      <div style={{ fontWeight: 'bold' }}>{data.label}</div>
-      {data.transformation_type && (
-        <div style={{ fontSize: '10px', marginTop: '4px', opacity: 0.8 }}>
-          {data.transformation_type}
+  transformation: ({ data }) => {
+    const colors = {
+      'Expression': '#FFA500',
+      'Lookup': '#9B59B6',
+      'Aggregator': '#3498DB',
+      'Joiner': '#E74C3C',
+      'Router': '#1ABC9C',
+      'Filter': '#F39C12',
+      'Union': '#16A085',
+      'SourceQualifier': '#34495E',
+      'UpdateStrategy': '#E67E22',
+      'Sorter': '#95A5A6',
+      'Rank': '#D35400'
+    };
+    const bgColor = colors[data.transformation_type] || '#7F8C8D';
+    
+    return (
+      <div style={{
+        padding: '8px',
+        background: bgColor,
+        color: 'white',
+        borderRadius: '8px',
+        border: '2px solid #555',
+        minWidth: '120px',
+        textAlign: 'center',
+        position: 'relative'
+      }}>
+        <Handle type="target" position={Position.Left} />
+        <Handle type="source" position={Position.Right} />
+        <div style={{ fontSize: '12px', fontWeight: 'bold' }}>{data.label}</div>
+        <div style={{ fontSize: '10px', marginTop: '3px', opacity: 0.9 }}>
+          {data.transformation_type || 'Transformation'}
         </div>
-      )}
-    </div>
-  )
+      </div>
+    );
+  }
 };
 
 export default function GraphExplorerPage() {
