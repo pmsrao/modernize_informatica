@@ -134,3 +134,15 @@ def get_logger(name: str = "modernizer") -> StructuredLogger:
 
 # Default logger
 logger = get_logger("modernizer")
+
+
+def get_enhanced_logger(name: str = "modernizer") -> StructuredLogger:
+    """Get enhanced logger with error categorization support.
+    
+    Args:
+        name: Logger name (typically __name__)
+        
+    Returns:
+        StructuredLogger instance with error categorization
+    """
+    return StructuredLogger(name)

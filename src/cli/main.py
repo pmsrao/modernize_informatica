@@ -23,6 +23,8 @@ from src.assessment.profiler import Profiler
 from src.assessment.analyzer import Analyzer
 from src.assessment.wave_planner import WavePlanner
 from src.assessment.report_generator import ReportGenerator
+from src.assessment.tco_calculator import TCOCalculator
+from src.reconciliation.recon_engine import ReconciliationEngine
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -65,6 +67,33 @@ def create_parser() -> argparse.ArgumentParser:
     report_parser = assess_subparsers.add_parser("report", help="Generate assessment report")
     report_parser.add_argument("--format", choices=["json", "html", "summary"], default="json", help="Report format")
     report_parser.add_argument("--output", type=str, help="Output file path")
+    
+    # assess tco
+    tco_parser = assess_subparsers.add_parser("tco", help="Calculate TCO and ROI")
+    tco_parser.add_argument("--informatica-cost", type=float, help="Annual Informatica cost")
+    tco_parser.add_argument("--migration-cost", type=float, help="One-time migration cost for ROI")
+    tco_parser.add_argument("--runtime-hours", type=float, help="Current runtime hours per day")
+    tco_parser.add_argument("--output", type=str, help="Output file path")
+    
+    # Reconciliation commands
+    recon_parser = subparsers.add_parser("reconcile", help="Reconciliation commands")
+    recon_subparsers = recon_parser.add_subparsers(dest="recon_command", help="Reconciliation subcommand")
+    
+    # reconcile mapping
+    recon_mapping_parser = recon_subparsers.add_parser("mapping", help="Reconcile a mapping")
+    recon_mapping_parser.add_argument("--mapping-name", required=True, help="Mapping name")
+    recon_mapping_parser.add_argument("--source-connection", type=str, help="Source connection JSON or file path")
+    recon_mapping_parser.add_argument("--target-connection", type=str, help="Target connection JSON or file path")
+    recon_mapping_parser.add_argument("--method", choices=["count", "hash", "threshold", "sampling"], default="count", help="Comparison method")
+    recon_mapping_parser.add_argument("--output", type=str, help="Output file path")
+    
+    # reconcile workflow
+    recon_workflow_parser = recon_subparsers.add_parser("workflow", help="Reconcile a workflow")
+    recon_workflow_parser.add_argument("--workflow-name", required=True, help="Workflow name")
+    recon_workflow_parser.add_argument("--source-connection", type=str, help="Source connection JSON or file path")
+    recon_workflow_parser.add_argument("--target-connection", type=str, help="Target connection JSON or file path")
+    recon_workflow_parser.add_argument("--method", choices=["count", "hash", "threshold", "sampling"], default="count", help="Comparison method")
+    recon_workflow_parser.add_argument("--output", type=str, help="Output file path")
     
     # Config command
     config_parser = subparsers.add_parser("config", help="Configuration commands")
@@ -187,6 +216,177 @@ def cmd_assess_report(config: Config, args: argparse.Namespace):
         sys.exit(1)
 
 
+def cmd_assess_tco(config: Config, args: argparse.Namespace):
+    """Execute assess tco command."""
+    try:
+        print_info("Calculating TCO and ROI...")
+        
+        graph_store = GraphStore(
+            uri=config.get("neo4j.uri"),
+            user=config.get("neo4j.user"),
+            password=config.get("neo4j.password")
+        )
+        
+        profiler = Profiler(graph_store)
+        tco_calculator = TCOCalculator(profiler)
+        
+        # Get repository metrics
+        repository_metrics = profiler.profile_repository()
+        
+        # Calculate TCO
+        tco_data = tco_calculator.calculate_tco(
+            informatica_annual_cost=args.informatica_cost,
+            repository_metrics=repository_metrics
+        )
+        
+        # Calculate ROI if migration cost provided
+        roi_data = None
+        if args.migration_cost:
+            annual_savings = tco_data.get('savings', {}).get('annual', 0)
+            roi_data = tco_calculator.calculate_roi(
+                migration_cost=args.migration_cost,
+                annual_savings=annual_savings
+            )
+        
+        # Estimate runtime improvements
+        runtime_data = tco_calculator.estimate_runtime_improvement(
+            repository_metrics=repository_metrics,
+            current_runtime_hours=args.runtime_hours
+        )
+        
+        # Generate comprehensive report
+        report = tco_calculator.generate_cost_analysis_report(
+            tco_data=tco_data,
+            roi_data=roi_data,
+            runtime_data=runtime_data
+        )
+        
+        if args.output:
+            output_path = Path(args.output)
+            with open(output_path, 'w') as f:
+                import json
+                json.dump(report, f, indent=2, default=str)
+            print_success(f"TCO analysis saved to {output_path}")
+        else:
+            print(format_output(report, format_type="json"))
+        
+    except Exception as e:
+        print_error(f"Failed to calculate TCO: {str(e)}")
+        sys.exit(1)
+
+
+def cmd_reconcile_mapping(config: Config, args: argparse.Namespace):
+    """Execute reconcile mapping command."""
+    try:
+        print_info(f"Reconciling mapping: {args.mapping_name}")
+        
+        graph_store = GraphStore(
+            uri=config.get("neo4j.uri"),
+            user=config.get("neo4j.user"),
+            password=config.get("neo4j.password")
+        ) if config.get("neo4j.uri") else None
+        
+        reconciliation_engine = ReconciliationEngine(graph_store)
+        
+        # Parse connection configs
+        source_connection = {}
+        target_connection = {}
+        
+        if args.source_connection:
+            if Path(args.source_connection).exists():
+                with open(args.source_connection) as f:
+                    import json
+                    source_connection = json.load(f)
+            else:
+                import json
+                source_connection = json.loads(args.source_connection)
+        
+        if args.target_connection:
+            if Path(args.target_connection).exists():
+                with open(args.target_connection) as f:
+                    import json
+                    target_connection = json.load(f)
+            else:
+                import json
+                target_connection = json.loads(args.target_connection)
+        
+        result = reconciliation_engine.reconcile_mapping(
+            mapping_name=args.mapping_name,
+            source_connection=source_connection,
+            target_connection=target_connection,
+            comparison_method=args.method
+        )
+        
+        if args.output:
+            output_path = Path(args.output)
+            with open(output_path, 'w') as f:
+                import json
+                json.dump(result, f, indent=2, default=str)
+            print_success(f"Reconciliation results saved to {output_path}")
+        else:
+            print(format_output(result, format_type="json"))
+        
+    except Exception as e:
+        print_error(f"Failed to reconcile mapping: {str(e)}")
+        sys.exit(1)
+
+
+def cmd_reconcile_workflow(config: Config, args: argparse.Namespace):
+    """Execute reconcile workflow command."""
+    try:
+        print_info(f"Reconciling workflow: {args.workflow_name}")
+        
+        graph_store = GraphStore(
+            uri=config.get("neo4j.uri"),
+            user=config.get("neo4j.user"),
+            password=config.get("neo4j.password")
+        ) if config.get("neo4j.uri") else None
+        
+        reconciliation_engine = ReconciliationEngine(graph_store)
+        
+        # Parse connection configs
+        source_connection = {}
+        target_connection = {}
+        
+        if args.source_connection:
+            if Path(args.source_connection).exists():
+                with open(args.source_connection) as f:
+                    import json
+                    source_connection = json.load(f)
+            else:
+                import json
+                source_connection = json.loads(args.source_connection)
+        
+        if args.target_connection:
+            if Path(args.target_connection).exists():
+                with open(args.target_connection) as f:
+                    import json
+                    target_connection = json.load(f)
+            else:
+                import json
+                target_connection = json.loads(args.target_connection)
+        
+        result = reconciliation_engine.reconcile_workflow(
+            workflow_name=args.workflow_name,
+            source_connection=source_connection,
+            target_connection=target_connection,
+            comparison_method=args.method
+        )
+        
+        if args.output:
+            output_path = Path(args.output)
+            with open(output_path, 'w') as f:
+                import json
+                json.dump(result, f, indent=2, default=str)
+            print_success(f"Reconciliation results saved to {output_path}")
+        else:
+            print(format_output(result, format_type="json"))
+        
+    except Exception as e:
+        print_error(f"Failed to reconcile workflow: {str(e)}")
+        sys.exit(1)
+
+
 def cmd_config_show(config: Config, args: argparse.Namespace):
     """Execute config show command."""
     print(format_output(config.config, format_type="json"))
@@ -230,8 +430,18 @@ def main():
                 cmd_assess_waves(config, args)
             elif args.assess_command == "report":
                 cmd_assess_report(config, args)
+            elif args.assess_command == "tco":
+                cmd_assess_tco(config, args)
             else:
                 print_error("Invalid assess subcommand")
+                sys.exit(1)
+        elif args.command == "reconcile":
+            if args.recon_command == "mapping":
+                cmd_reconcile_mapping(config, args)
+            elif args.recon_command == "workflow":
+                cmd_reconcile_workflow(config, args)
+            else:
+                print_error("Invalid reconcile subcommand")
                 sys.exit(1)
         elif args.command == "config":
             if args.config_command == "show":

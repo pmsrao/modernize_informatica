@@ -2485,6 +2485,363 @@ async def get_assessment_report(format: str = "json"):
         )
 
 
+@router.get("/assessment/tco")
+async def get_tco_analysis(
+    informatica_cost: Optional[float] = None,
+    migration_cost: Optional[float] = None,
+    current_runtime_hours: Optional[float] = None
+):
+    """Calculate TCO and ROI analysis.
+    
+    Args:
+        informatica_cost: Annual Informatica licensing cost (optional)
+        migration_cost: One-time migration cost for ROI calculation (optional)
+        current_runtime_hours: Current total runtime in hours per day (optional)
+    
+    Returns:
+        TCO and ROI analysis results
+    """
+    if not tco_calculator or not profiler:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="TCO calculator not available. Graph store must be enabled."
+        )
+    
+    try:
+        # Get repository metrics
+        repository_metrics = profiler.profile_repository()
+        
+        # Calculate TCO
+        tco_data = tco_calculator.calculate_tco(
+            informatica_annual_cost=informatica_cost,
+            repository_metrics=repository_metrics
+        )
+        
+        # Calculate ROI if migration cost provided
+        roi_data = None
+        if migration_cost:
+            annual_savings = tco_data.get('savings', {}).get('annual', 0)
+            roi_data = tco_calculator.calculate_roi(
+                migration_cost=migration_cost,
+                annual_savings=annual_savings
+            )
+        
+        # Estimate runtime improvements
+        runtime_data = tco_calculator.estimate_runtime_improvement(
+            repository_metrics=repository_metrics,
+            current_runtime_hours=current_runtime_hours
+        )
+        
+        # Generate comprehensive report
+        report = tco_calculator.generate_cost_analysis_report(
+            tco_data=tco_data,
+            roi_data=roi_data,
+            runtime_data=runtime_data
+        )
+        
+        return JSONResponse(content=report)
+    except Exception as e:
+        logger.error(f"Error calculating TCO: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to calculate TCO: {str(e)}"
+        )
+
+
+# ============================================================================
+# Reconciliation Endpoints
+# ============================================================================
+
+@router.post("/reconciliation/mapping")
+async def reconcile_mapping(request: Dict[str, Any]):
+    """Reconcile a single mapping between source and target.
+    
+    Request body:
+        - mapping_name: Name of the mapping
+        - source_connection: Source connection details (Informatica)
+        - target_connection: Target connection details (Databricks)
+        - comparison_method: Method to use ('count', 'hash', 'threshold', 'sampling')
+        - options: Optional comparison options
+    
+    Returns:
+        Reconciliation results
+    """
+    if not reconciliation_engine:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Reconciliation engine not available."
+        )
+    
+    try:
+        mapping_name = request.get('mapping_name')
+        source_connection = request.get('source_connection', {})
+        target_connection = request.get('target_connection', {})
+        comparison_method = request.get('comparison_method', 'count')
+        options = request.get('options', {})
+        
+        if not mapping_name:
+            raise ValidationError("mapping_name is required")
+        
+        result = reconciliation_engine.reconcile_mapping(
+            mapping_name=mapping_name,
+            source_connection=source_connection,
+            target_connection=target_connection,
+            comparison_method=comparison_method,
+            options=options
+        )
+        
+        return JSONResponse(content=result)
+    except Exception as e:
+        logger.error(f"Error reconciling mapping: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Reconciliation failed: {str(e)}"
+        )
+
+
+@router.post("/reconciliation/workflow")
+async def reconcile_workflow(request: Dict[str, Any]):
+    """Reconcile all mappings in a workflow.
+    
+    Request body:
+        - workflow_name: Name of the workflow
+        - source_connection: Source connection details
+        - target_connection: Target connection details
+        - comparison_method: Method to use
+        - options: Optional comparison options
+    
+    Returns:
+        Workflow reconciliation results
+    """
+    if not reconciliation_engine:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Reconciliation engine not available."
+        )
+    
+    try:
+        workflow_name = request.get('workflow_name')
+        source_connection = request.get('source_connection', {})
+        target_connection = request.get('target_connection', {})
+        comparison_method = request.get('comparison_method', 'count')
+        options = request.get('options', {})
+        
+        if not workflow_name:
+            raise ValidationError("workflow_name is required")
+        
+        result = reconciliation_engine.reconcile_workflow(
+            workflow_name=workflow_name,
+            source_connection=source_connection,
+            target_connection=target_connection,
+            comparison_method=comparison_method,
+            options=options
+        )
+        
+        return JSONResponse(content=result)
+    except Exception as e:
+        logger.error(f"Error reconciling workflow: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Workflow reconciliation failed: {str(e)}"
+        )
+
+
+@router.post("/reconciliation/incremental")
+async def reconcile_incremental(request: Dict[str, Any]):
+    """Reconcile incremental data (for phased migrations).
+    
+    Request body:
+        - mapping_name: Name of the mapping
+        - source_connection: Source connection details
+        - target_connection: Target connection details
+        - incremental_key: Key column for incremental comparison
+        - start_value: Start value for incremental range
+        - end_value: End value for incremental range
+        - comparison_method: Method to use
+        - options: Optional comparison options
+    
+    Returns:
+        Incremental reconciliation results
+    """
+    if not reconciliation_engine:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Reconciliation engine not available."
+        )
+    
+    try:
+        mapping_name = request.get('mapping_name')
+        source_connection = request.get('source_connection', {})
+        target_connection = request.get('target_connection', {})
+        incremental_key = request.get('incremental_key')
+        start_value = request.get('start_value')
+        end_value = request.get('end_value')
+        comparison_method = request.get('comparison_method', 'count')
+        options = request.get('options', {})
+        
+        if not mapping_name or not incremental_key:
+            raise ValidationError("mapping_name and incremental_key are required")
+        
+        result = reconciliation_engine.reconcile_incremental(
+            mapping_name=mapping_name,
+            source_connection=source_connection,
+            target_connection=target_connection,
+            incremental_key=incremental_key,
+            start_value=start_value,
+            end_value=end_value,
+            comparison_method=comparison_method,
+            options=options
+        )
+        
+        return JSONResponse(content=result)
+    except Exception as e:
+        logger.error(f"Error in incremental reconciliation: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Incremental reconciliation failed: {str(e)}"
+        )
+
+
+@router.post("/testing/generate-tests")
+async def generate_tests(request: Dict[str, Any]):
+    """Generate automated tests for generated code.
+    
+    Request body:
+        - mapping_name: Name of the mapping
+        - code_type: Type of code ('pyspark', 'sql')
+        - generated_code: Generated code string
+        - canonical_model: Canonical model
+        - test_data: Optional test data
+    
+    Returns:
+        Generated test code
+    """
+    try:
+        from src.generators.test_generator import TestGenerator
+        
+        mapping_name = request.get('mapping_name')
+        code_type = request.get('code_type', 'pyspark')
+        generated_code = request.get('generated_code', '')
+        canonical_model = request.get('canonical_model', {})
+        test_data = request.get('test_data')
+        
+        if not mapping_name or not canonical_model:
+            raise ValidationError("mapping_name and canonical_model are required")
+        
+        test_generator = TestGenerator()
+        
+        if code_type == 'pyspark':
+            test_code = test_generator.generate_pyspark_tests(
+                canonical_model=canonical_model,
+                generated_code=generated_code,
+                test_data=test_data
+            )
+        elif code_type == 'sql':
+            test_code = test_generator.generate_sql_tests(
+                canonical_model=canonical_model,
+                generated_sql=generated_code,
+                test_data=test_data
+            )
+        else:
+            raise ValidationError(f"Unsupported code type: {code_type}")
+        
+        return JSONResponse(content={
+            'success': True,
+            'test_code': test_code,
+            'mapping_name': mapping_name,
+            'code_type': code_type
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating tests: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Test generation failed: {str(e)}"
+        )
+
+
+@router.post("/testing/validate-test-data")
+async def validate_test_data(request: Dict[str, Any]):
+    """Validate test data against canonical model.
+    
+    Request body:
+        - canonical_model: Canonical model
+        - test_data: Test data to validate
+        - expected_output: Expected output data
+        - code_type: Type of code ('pyspark', 'sql')
+    
+    Returns:
+        Validation results
+    """
+    try:
+        from src.validation.test_data_validator import TestDataValidator
+        
+        canonical_model = request.get('canonical_model', {})
+        test_data = request.get('test_data', [])
+        expected_output = request.get('expected_output', [])
+        code_type = request.get('code_type', 'pyspark')
+        
+        if not canonical_model or not test_data:
+            raise ValidationError("canonical_model and test_data are required")
+        
+        validator = TestDataValidator()
+        
+        validation_result = validator.validate_transformation_logic(
+            canonical_model=canonical_model,
+            test_data=test_data,
+            expected_output=expected_output,
+            code_type=code_type
+        )
+        
+        return JSONResponse(content={
+            'success': True,
+            'validation_result': validation_result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error validating test data: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Test data validation failed: {str(e)}"
+        )
+
+
+@router.post("/testing/run-integration-tests")
+async def run_integration_tests(request: Dict[str, Any]):
+    """Run integration tests.
+    
+    Request body:
+        - test_suite: Test suite definition
+        - test_config: Optional test configuration
+    
+    Returns:
+        Test results
+    """
+    try:
+        from src.testing.integration_test_framework import IntegrationTestFramework
+        
+        test_suite = request.get('test_suite', {})
+        test_config = request.get('test_config', {})
+        
+        if not test_suite:
+            raise ValidationError("test_suite is required")
+        
+        framework = IntegrationTestFramework(test_config=test_config)
+        results = framework.run_test_suite(test_suite)
+        
+        return JSONResponse(content={
+            'success': True,
+            'results': results
+        })
+        
+    except Exception as e:
+        logger.error(f"Error running integration tests: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Integration test execution failed: {str(e)}"
+        )
+
+
 @router.post("/review/code")
 async def review_code(request: Dict[str, Any]):
     """Review generated code for issues and improvements.

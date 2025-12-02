@@ -68,6 +68,10 @@ Main testing documentation with links to detailed guides.
 - **[LLM Quick Reference](guides/llm_quick_reference.md)** - Quick LLM reference
 - **[Analysis Report](guides/analysis_report.md)** - Analysis of implementation status
 - **[Next Steps](guides/next_steps.md)** - Recommended next steps
+- **[Testing and Validation](guides/testing_validation.md)** - Testing and validation guide
+- **[Migration Guide](guides/migration_guide.md)** - Step-by-step migration instructions
+- **[Error Handling](guides/error_handling.md)** - Error categorization and recovery guide
+- **[Testing and Validation](guides/testing_validation.md)** - Testing and validation guide
 
 ---
 

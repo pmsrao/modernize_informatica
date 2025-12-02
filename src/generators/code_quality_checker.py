@@ -3,10 +3,20 @@
 This module provides comprehensive code quality checks for generated PySpark,
 SQL, and other code artifacts.
 """
+import sys
+from pathlib import Path
 import ast
 import re
 from typing import Dict, Any, List, Optional, Tuple
-from utils.logger import get_logger
+
+# Add project root to path
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+if str(project_root / "src") not in sys.path:
+    sys.path.insert(0, str(project_root / "src"))
+
+from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -39,7 +49,8 @@ class CodeQualityChecker:
             "security_issues": [],
             "complexity_score": 0,
             "overall_score": 0,
-            "recommendations": []
+            "recommendations": [],
+            "databricks_validation": {}
         }
         
         # Syntax validation
@@ -52,6 +63,20 @@ class CodeQualityChecker:
             results["overall_score"] = 0
             return results
         
+        # Databricks-specific validation
+        try:
+            from src.validation.databricks_validator import DatabricksValidator
+            databricks_validator = DatabricksValidator()
+            
+            if code_type == "pyspark":
+                databricks_result = databricks_validator.validate_pyspark_code(code)
+                results["databricks_validation"] = databricks_result
+            elif code_type == "sql":
+                databricks_result = databricks_validator.validate_sql_code(code)
+                results["databricks_validation"] = databricks_result
+        except ImportError:
+            logger.warning("DatabricksValidator not available - skipping Databricks-specific validation")
+        
         # Type safety checks
         if code_type == "pyspark":
             results["type_safety"] = self.check_types(code, canonical_model)
@@ -60,7 +85,7 @@ class CodeQualityChecker:
         results["performance_hints"] = self.check_performance(code, code_type)
         
         # Best practices
-        results["best_practices"] = self.check_best_practices(code, code_type)
+        results["best_practices"] = self.check_best_practices(code, code_type) = self.check_best_practices(code, code_type)
         
         # Security checks
         results["security_issues"] = self.check_security(code)
