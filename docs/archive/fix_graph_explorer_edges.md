@@ -38,7 +38,7 @@ If Option 1 doesn't work:
 
 ```bash
 # Clean Neo4j and uploaded files
-python scripts/cleanup.py --neo4j --uploads --yes
+python scripts/utils/cleanup.py --neo4j --uploads --yes
 
 # Then re-upload and parse via UI:
 # 1. Upload the mapping file again

@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 # Add project root to path
-project_root = Path(__file__).parent.parent
+project_root = Path(__file__).parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 if str(project_root / "src") not in sys.path:
@@ -328,19 +328,19 @@ def main():
         epilog="""
 Examples:
   # Clean up everything (Neo4j, files, version store, assessment reports)
-  python scripts/cleanup.py --all --yes
+  python scripts/utils/cleanup.py --all --yes
 
   # Clean up only Neo4j
-  python scripts/cleanup.py --neo4j --yes
+  python scripts/utils/cleanup.py --neo4j --yes
 
   # Clean up only workflows from Neo4j
-  python scripts/cleanup.py --neo4j --component Workflow --yes
+  python scripts/utils/cleanup.py --neo4j --component Workflow --yes
 
   # Clean up only mappings from Neo4j
-  python scripts/cleanup.py --neo4j --component Mapping --yes
+  python scripts/utils/cleanup.py --neo4j --component Mapping --yes
 
   # Clean up only assessment reports
-  python scripts/cleanup.py --assessment --yes
+  python scripts/utils/cleanup.py --assessment --yes
 
 Available component types: Mapping, Workflow, Session, Worklet, Transformation, Source, Target, Table, SourceFile, GeneratedCode, Field, Database
         """

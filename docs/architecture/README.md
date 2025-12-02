@@ -1,61 +1,93 @@
-# Architecture Diagrams
+# High-Level Architecture
 
-This directory contains architecture diagrams for the Informatica Modernization Accelerator.
+## Logical Flow
 
-## Files
+At the highest level, the system can be viewed as:
 
-- `architecture_diagram.drawio` - Draw.io format diagram (for editing in draw.io)
-- `architecture_diagram.mermaid` - Mermaid format diagram (for viewing in Markdown/GitHub)
+1. **Input**: Informatica XML files (Workflow, Worklet, Session, Mapping)
+2. **Parsing**: Structured extraction of transformations, fields, connectors, and configuration
+3. **Canonical Modeling**: Normalization into a technology-neutral representation
+4. **Expression Processing**: Building ASTs from Informatica expressions and translating them
+5. **Code & Spec Generation**: PySpark/SQL/DLT/specs/reconciliation/tests
+6. **AI & LLM Reasoning**: Explanation, summarization, risk analysis, optimization, reconstruction
+7. **DAG Construction**: Building workflow-level execution graphs
+8. **Delivery**: Through REST API, UI, files, and integration with catalogs/storage/CI
 
-## Viewing the Diagrams
+---
 
-### Draw.io Format
-1. Open [draw.io](https://app.diagrams.net/) in your browser
-2. File → Open → Select `architecture_diagram.drawio`
-3. Or use the Draw.io desktop app
+## Textual Architecture Diagram
 
-### Mermaid Format
-The Mermaid diagram can be viewed:
-- In GitHub: It will render automatically in Markdown files
-- In VS Code: Install the "Markdown Preview Mermaid Support" extension
-- Online: Use [Mermaid Live Editor](https://mermaid.live/)
+```text
+Informatica XMLs
+  (Workflow / Worklet / Session / Mapping)
+                 |
+                 v
+          [ XML Parsers ]
+                 |
+                 v
+      [ Canonical Model + Lineage ]
+                 |
+                 v
+      [ Expression AST Engine ]
+                 |
+                 v
+      [ Code Generators ]
+   (PySpark / SQL / DLT / Specs / Tests)
+                 |
+                 v
+      [ AI & LLM Agents Layer ]
+                 |
+                 v
+        [ Workflow DAG Engine ]
+                 |
+                 v
+     [ API + UI + Deployment Layer ]
+```
 
-## Diagram Components
+---
 
-### Color Coding
-- **Gray**: Deterministic components (Parsers, Normalizers, Generators)
-- **Purple**: AI/LLM components (Enhancement Agents, Review Agents, LLM Manager)
-- **Green**: Graph storage components (Version Store, Graph Store)
+## Component Overview
 
-### Key Flows
+### Input Layer
+- **XML Files**: Workflow, Worklet, Session, Mapping XML files from Informatica
 
-1. **Main Processing Flow**:
-   ```
-   XML → Parse → Canonical Model → AI Enhancement → Enhanced Model → 
-   Code Generation → AI Review → Final Code
-   ```
+### Processing Layer
+- **XML Parsers**: Extract structured data from XML
+- **Canonical Model**: Technology-neutral representation
+- **Expression Engine**: Parse and translate expressions
+- **Code Generators**: Generate target platform code
 
-2. **Storage Flow**:
-   ```
-   Enhanced Model → Version Store (JSON + Graph) → Graph Store (Neo4j)
-   ```
+### Intelligence Layer
+- **AI Agents**: LLM-powered analysis and reasoning
+- **DAG Engine**: Workflow execution graph construction
 
-3. **API Flow**:
-   ```
-   All Components → REST API → Frontend UI
-   ```
+### Delivery Layer
+- **Backend API**: RESTful API for programmatic access
+- **Frontend UI**: Interactive web interface
+- **Deployment**: Docker, Kubernetes, CI/CD integration
 
-## Troubleshooting
+---
 
-If the draw.io file doesn't open:
-1. Try opening it in [draw.io web app](https://app.diagrams.net/)
-2. Use the Mermaid version instead (easier to view/edit)
-3. Check that the file is not corrupted (should be valid XML)
+## Data Flow
 
-## Updates
+1. **XML → Parsed Data**: XML parsers extract structured information
+2. **Parsed Data → Canonical Model**: Normalization ensures consistency
+3. **Canonical Model → Code**: Generators produce executable artifacts
+4. **Canonical Model → AI Insights**: Agents provide analysis and recommendations
+5. **Workflow XML → DAG**: DAG engine constructs execution graphs
+6. **All → API/UI**: Results delivered through interfaces
 
-When updating the architecture:
-1. Update both draw.io and Mermaid versions
-2. Keep them in sync
-3. Update this README if structure changes significantly
+---
+
+## Key Design Principles
+
+1. **Modularity**: Each component is independent and replaceable
+2. **Canonical Model**: Single source of truth for all downstream processing
+3. **Extensibility**: Easy to add new parsers, generators, or agents
+4. **AI-Augmented**: LLMs enhance but don't replace deterministic logic
+5. **Regeneration-Friendly**: Code can be regenerated from design specs
+
+---
+
+**Next**: Learn about the [Canonical Model](canonical_model.md) that powers the system.
 
