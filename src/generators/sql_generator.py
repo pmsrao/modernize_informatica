@@ -52,7 +52,8 @@ class SQLGenerator:
                                 sql_expr = self.sql_translator.visit(ast)
                                 select_cols.append(f"  {sql_expr} AS \"{port_name}\"")
                             except Exception as e:
-                                logger.warning(f"Could not translate expression to SQL: {expression}", error=e)
+                                error_msg = str(e)
+                                logger.warning(f"Could not translate expression to SQL: {expression} - {error_msg}")
                                 select_cols.append(f"  {expression} AS \"{port_name}\"")
         
         # If no expressions, use source columns

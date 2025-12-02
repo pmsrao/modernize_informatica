@@ -10,6 +10,7 @@ from .models import (
     ParseMappingRequest, ParseWorkflowRequest, ParseSessionRequest, ParseWorkletRequest,
     ParseResponse,
     GeneratePySparkRequest, GenerateDLTRequest, GenerateSQLRequest, GenerateSpecRequest,
+    GenerateOrchestrationRequest,
     GenerateResponse,
     AnalyzeSummaryRequest, AnalyzeRisksRequest, AnalyzeSuggestionsRequest, ExplainExpressionRequest,
     AIAnalysisResponse,
@@ -19,7 +20,10 @@ from .models import (
 from .file_manager import file_manager
 from parser import MappingParser, WorkflowParser, SessionParser, WorkletParser
 from normalizer import MappingNormalizer
-from generators import PySparkGenerator, DLTGenerator, SQLGenerator, SpecGenerator
+from generators import (
+    PySparkGenerator, DLTGenerator, SQLGenerator, SpecGenerator,
+    OrchestrationGenerator, CodeQualityChecker
+)
 from dag import DAGBuilder, DAGVisualizer
 from versioning.version_store import VersionStore
 from config import settings
@@ -54,10 +58,18 @@ agent_orchestrator = AgentOrchestrator()
 # Initialize graph store if enabled
 graph_store = None
 graph_queries = None
+profiler = None
+analyzer = None
+wave_planner = None
+report_generator = None
 if settings.enable_graph_store:
     try:
         from src.graph.graph_store import GraphStore
         from src.graph.graph_queries import GraphQueries
+        from src.assessment.profiler import Profiler
+        from src.assessment.analyzer import Analyzer
+        from src.assessment.wave_planner import WavePlanner
+        from src.assessment.report_generator import ReportGenerator
         
         graph_store = GraphStore(
             uri=settings.neo4j_uri,
@@ -65,6 +77,12 @@ if settings.enable_graph_store:
             password=settings.neo4j_password
         )
         graph_queries = GraphQueries(graph_store)
+        
+        # Initialize assessment components
+        profiler = Profiler(graph_store)
+        analyzer = Analyzer(graph_store, profiler)
+        wave_planner = WavePlanner(graph_store, profiler, analyzer)
+        report_generator = ReportGenerator(graph_store, profiler, analyzer, wave_planner)
         
         # Update version store to use graph
         if settings.graph_first:
@@ -80,11 +98,15 @@ if settings.enable_graph_store:
                 graph_first=False
             )
         
-        logger.info("Graph store initialized and enabled")
+        logger.info("Graph store and assessment components initialized and enabled")
     except Exception as e:
         logger.warning(f"Failed to initialize graph store: {str(e)}")
         graph_store = None
         graph_queries = None
+        profiler = None
+        analyzer = None
+        wave_planner = None
+        report_generator = None
 
 
 # ============================================================================
@@ -572,8 +594,12 @@ def _get_canonical_model(request) -> dict:
     """Helper to get canonical model from request."""
     if request.canonical_model:
         return request.canonical_model
-    elif request.mapping_id:
+    elif hasattr(request, 'mapping_id') and request.mapping_id:
         return version_store.load(request.mapping_id)
+    elif hasattr(request, 'workflow_id') and request.workflow_id:
+        # For workflows, we might need to aggregate multiple mappings
+        # For now, return the workflow structure
+        return version_store.load(request.workflow_id)
     elif request.file_id:
         # Parse and normalize from file
         file_path = file_manager.get_file_path(request.file_id)
@@ -609,6 +635,10 @@ async def generate_pyspark(request: GeneratePySparkRequest):
         generator = PySparkGenerator()
         code = generator.generate(canonical_model)
         
+        # Quality check
+        quality_checker = CodeQualityChecker()
+        quality_result = quality_checker.check_code_quality(code, "pyspark", canonical_model)
+        
         # Optional: Review code (if requested)
         review_result = None
         if hasattr(request, 'review_code') and request.review_code:
@@ -634,7 +664,8 @@ async def generate_pyspark(request: GeneratePySparkRequest):
             code=code,
             language="pyspark",
             message="PySpark code generated successfully",
-            review=review_result
+            review=review_result,
+            quality_check=quality_result
         )
         
     except GenerationError as e:
@@ -789,6 +820,94 @@ async def generate_spec(request: GenerateSpecRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Generation failed: {str(e)}"
+        )
+
+
+@router.post("/generate/orchestration", response_model=GenerateResponse)
+async def generate_orchestration(request: GenerateOrchestrationRequest):
+    """Generate workflow orchestration code (Airflow, Databricks, Prefect).
+    
+    Args:
+        request: Orchestration generation request with workflow_id, workflow_data, or file_id
+        
+    Returns:
+        Generated orchestration code
+    """
+    try:
+        logger.info(f"Orchestration generation requested for platform: {request.platform}")
+        
+        # Get workflow data
+        workflow_data = request.workflow_data
+        if request.workflow_id:
+            workflow_data = version_store.load(request.workflow_id)
+        elif request.file_id:
+            file_path = file_manager.get_file_path(request.file_id)
+            if not file_path:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"File not found: {request.file_id}"
+                )
+            parser = WorkflowParser(file_path)
+            workflow_data = parser.parse()
+        
+        if not workflow_data:
+            raise ValidationError("Either workflow_data, workflow_id, or file_id must be provided")
+        
+        # If graph store is available, enhance workflow structure
+        if graph_store and graph_queries:
+            workflow_name = workflow_data.get("name", "unknown")
+            enhanced_structure = graph_queries.get_workflow_structure(workflow_name)
+            if enhanced_structure:
+                workflow_data = enhanced_structure
+        
+        # Generate orchestration code
+        generator = OrchestrationGenerator()
+        
+        if request.platform == "airflow":
+            code = generator.generate_airflow_dag(workflow_data, schedule=request.schedule)
+            language = "python"
+        elif request.platform == "databricks":
+            workflow_json = generator.generate_databricks_workflow(workflow_data, 
+                                                                 schedule={"quartz_cron_expression": request.schedule or "0 0 0 * * ?"} if request.schedule else None)
+            import json
+            code = json.dumps(workflow_json, indent=2)
+            language = "json"
+        elif request.platform == "prefect":
+            code = generator.generate_prefect_flow(workflow_data)
+            language = "python"
+        else:
+            raise ValidationError(f"Unsupported platform: {request.platform}. Supported: airflow, databricks, prefect")
+        
+        # Quality check for Python code
+        quality_result = None
+        if language == "python":
+            quality_checker = CodeQualityChecker()
+            quality_result = quality_checker.check_code_quality(code, "python")
+        
+        logger.info(f"Orchestration code generated successfully for {request.platform}")
+        
+        return GenerateResponse(
+            success=True,
+            code=code,
+            language=language,
+            message=f"Orchestration code generated successfully for {request.platform}",
+            quality_check=quality_result
+        )
+        
+    except ValidationError as e:
+        logger.error("Orchestration generation validation failed", error=e)
+        return GenerateResponse(
+            success=False,
+            code="",
+            language=request.platform,
+            message=f"Validation failed: {str(e)}",
+            errors=[str(e)]
+        )
+    except Exception as e:
+        logger.error("Unexpected error during orchestration generation", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Orchestration generation failed: {str(e)}"
         )
 
 
@@ -1536,6 +1655,380 @@ async def list_all_mappings():
         )
 
 
+@router.get("/graph/workflows")
+async def list_workflows():
+    """List all workflows with sessions and mappings.
+    
+    Returns:
+        List of workflows with their structure
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        workflows = graph_queries.list_workflows()
+        
+        # Enhance with full structure
+        enhanced_workflows = []
+        for workflow in workflows:
+            workflow_name = workflow.get("name")
+            if workflow_name:
+                structure = graph_queries.get_workflow_structure(workflow_name)
+                if structure:
+                    enhanced_workflows.append(structure)
+                else:
+                    enhanced_workflows.append(workflow)
+        
+        return {
+            "success": True,
+            "workflows": enhanced_workflows,
+            "count": len(enhanced_workflows)
+        }
+    except Exception as e:
+        logger.error(f"List workflows failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"List workflows failed: {str(e)}"
+        )
+
+
+@router.get("/graph/workflows/{workflow_name}")
+async def get_workflow_structure_endpoint(workflow_name: str):
+    """Get complete workflow structure with tasks and transformations.
+    
+    Returns a generic canonical model representation:
+    - Workflow contains Tasks (generic term for Informatica Sessions)
+    - Tasks contain Transformations (generic term for Informatica Mappings)
+    
+    Args:
+        workflow_name: Workflow name
+        
+    Returns:
+        Workflow structure with tasks and transformations in canonical model format
+        Structure: {
+            "name": "...",
+            "type": "...",
+            "properties": {...},
+            "tasks": [  # Generic term
+                {
+                    "name": "...",
+                    "type": "...",
+                    "properties": {...},
+                    "transformations": [...]  # Generic term
+                }
+            ]
+        }
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        structure = graph_queries.get_workflow_structure(workflow_name)
+        
+        if not structure:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Workflow not found: {workflow_name}"
+            )
+        
+        return {
+            "success": True,
+            "workflow": structure
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get workflow structure failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Get workflow structure failed: {str(e)}"
+        )
+
+
+@router.get("/graph/components")
+async def list_all_components():
+    """List all components (workflows, sessions, worklets, mappings) with file metadata.
+    
+    Returns:
+        Dictionary with all components grouped by type and counts
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        # Get all components
+        workflows = graph_queries.list_workflows()
+        mappings = graph_store.list_all_mappings()
+        
+        # Get sessions and worklets
+        with graph_store.driver.session() as session:
+            sessions_result = session.run("""
+                MATCH (s:Session)
+                RETURN s.name as name, s.type as type, properties(s) as properties
+                ORDER BY s.name
+            """)
+            sessions = [dict(record) for record in sessions_result]
+            
+            worklets_result = session.run("""
+                MATCH (wl:Worklet)
+                RETURN wl.name as name, wl.type as type, properties(wl) as properties
+                ORDER BY wl.name
+            """)
+            worklets = [dict(record) for record in worklets_result]
+        
+        # Enhance with file metadata
+        for wf in workflows:
+            file_meta = graph_queries.get_component_file_metadata(wf["name"], "Workflow")
+            if file_meta:
+                wf["file_metadata"] = file_meta
+        
+        for sess in sessions:
+            file_meta = graph_queries.get_component_file_metadata(sess["name"], "Session")
+            if file_meta:
+                sess["file_metadata"] = file_meta
+        
+        for wl in worklets:
+            file_meta = graph_queries.get_component_file_metadata(wl["name"], "Worklet")
+            if file_meta:
+                wl["file_metadata"] = file_meta
+        
+        # Get mappings with file metadata
+        mappings_with_meta = []
+        for mapping_name in mappings:
+            mapping_info = {"name": mapping_name}
+            file_meta = graph_queries.get_component_file_metadata(mapping_name, "Mapping")
+            if file_meta:
+                mapping_info["file_metadata"] = file_meta
+            mappings_with_meta.append(mapping_info)
+        
+        return {
+            "success": True,
+            "workflows": workflows,
+            "sessions": sessions,
+            "worklets": worklets,
+            "mappings": mappings_with_meta,
+            "counts": {
+                "workflows": len(workflows),
+                "sessions": len(sessions),
+                "worklets": len(worklets),
+                "mappings": len(mappings)
+            }
+        }
+    except Exception as e:
+        logger.error(f"List components failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"List components failed: {str(e)}"
+        )
+
+
+@router.get("/graph/files")
+async def list_all_files():
+    """List all source files with metadata.
+    
+    Returns:
+        List of source files with metadata
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        files = graph_queries.list_all_source_files()
+        return {
+            "success": True,
+            "files": files,
+            "count": len(files)
+        }
+    except Exception as e:
+        logger.error(f"List files failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"List files failed: {str(e)}"
+        )
+
+
+@router.get("/graph/files/{component_type}/{component_name}")
+async def get_file_metadata(component_type: str, component_name: str):
+    """Get file metadata for a specific component.
+    
+    Args:
+        component_type: Type of component (Workflow, Session, Worklet, Mapping)
+        component_name: Name of the component
+        
+    Returns:
+        File metadata dictionary
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        file_meta = graph_queries.get_component_file_metadata(component_name, component_type)
+        if not file_meta:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"File metadata not found for {component_type}: {component_name}"
+            )
+        
+        return {
+            "success": True,
+            "file_metadata": file_meta
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get file metadata failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Get file metadata failed: {str(e)}"
+        )
+
+
+@router.get("/graph/code/repository")
+async def get_code_repository():
+    """Get repository tree structure of generated code.
+    
+    Returns:
+        Tree structure organized by workflow/session/mapping
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        tree = graph_queries.get_code_repository_structure()
+        # Return empty structure if no code files exist yet
+        if not tree or (isinstance(tree, dict) and len(tree) == 0):
+            return {
+                "success": True,
+                "repository": {
+                    "review_summary.json": {"type": "file", "path": "review_summary.json"},
+                    "workflows": {}
+                }
+            }
+        return {
+            "success": True,
+            "repository": tree
+        }
+    except Exception as e:
+        logger.error(f"Get code repository failed: {str(e)}", error=e)
+        # Return empty structure instead of error
+        return {
+            "success": True,
+            "repository": {
+                "review_summary.json": {"type": "file", "path": "review_summary.json"},
+                "workflows": {}
+            },
+            "message": "No code files found in repository"
+        }
+
+
+@router.get("/graph/code/{mapping_name}")
+async def get_mapping_code(mapping_name: str):
+    """Get code metadata for a mapping.
+    
+    Args:
+        mapping_name: Name of the mapping
+        
+    Returns:
+        List of code files with metadata
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        code_files = graph_queries.get_mapping_code_files(mapping_name)
+        # Filter out any None or invalid entries
+        code_files = [f for f in code_files if f and f.get("file_path")]
+        return {
+            "success": True,
+            "mapping_name": mapping_name,
+            "code_files": code_files,
+            "count": len(code_files)
+        }
+    except Exception as e:
+        logger.error(f"Get mapping code failed: {str(e)}", error=e)
+        # Return empty list instead of error if code files don't exist yet
+        return {
+            "success": True,
+            "mapping_name": mapping_name,
+            "code_files": [],
+            "count": 0,
+            "message": "No code files found for this mapping"
+        }
+
+
+@router.get("/graph/code/file/{file_path:path}")
+async def get_code_file(file_path: str):
+    """Read actual code content from filesystem.
+    
+    Args:
+        file_path: Path to the code file (URL encoded)
+        
+    Returns:
+        Code content and metadata
+    """
+    import urllib.parse
+    from pathlib import Path
+    
+    try:
+        # Decode the file path
+        decoded_path = urllib.parse.unquote(file_path)
+        
+        # Security check: ensure path is within project directory
+        project_root = Path(__file__).parent.parent.parent
+        full_path = (project_root / decoded_path).resolve()
+        
+        if not str(full_path).startswith(str(project_root.resolve())):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: File path outside project directory"
+            )
+        
+        if not full_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Code file not found: {decoded_path}"
+            )
+        
+        with open(full_path, 'r') as f:
+            code_content = f.read()
+        
+        return {
+            "success": True,
+            "file_path": decoded_path,
+            "code": code_content,
+            "file_size": full_path.stat().st_size
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Read code file failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Read code file failed: {str(e)}"
+        )
+
+
 @router.get("/graph/mappings/{mapping_name}/structure")
 async def get_mapping_structure(mapping_name: str):
     """Get complete mapping structure for visualization.
@@ -1866,6 +2359,129 @@ async def get_mapping_structure(mapping_name: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Get mapping structure failed: {str(e)}"
+        )
+
+
+# ============================================================================
+# Assessment Endpoints
+# ============================================================================
+
+@router.get("/assessment/profile")
+async def get_assessment_profile():
+    """Get repository profile statistics.
+    
+    Returns:
+        Repository statistics including component counts and distributions
+    """
+    if not profiler:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Assessment module not available. Graph store must be enabled."
+        )
+    
+    try:
+        profile = profiler.profile_repository()
+        return JSONResponse(content=profile)
+    except Exception as e:
+        logger.error(f"Error profiling repository: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to profile repository: {str(e)}"
+        )
+
+
+@router.get("/assessment/analyze")
+async def get_assessment_analysis():
+    """Run analysis and identify blockers.
+    
+    Returns:
+        Analysis results including patterns, blockers, and effort estimates
+    """
+    if not analyzer:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Assessment module not available. Graph store must be enabled."
+        )
+    
+    try:
+        patterns = analyzer.identify_patterns()
+        blockers = analyzer.identify_blockers()
+        effort = analyzer.estimate_migration_effort()
+        dependencies = analyzer.find_dependencies()
+        categorized = analyzer.categorize_by_complexity()
+        
+        analysis = {
+            "patterns": patterns,
+            "blockers": blockers,
+            "effort_estimates": effort,
+            "dependencies": dependencies,
+            "categorized_components": categorized
+        }
+        
+        return JSONResponse(content=analysis)
+    except Exception as e:
+        logger.error(f"Error analyzing repository: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to analyze repository: {str(e)}"
+        )
+
+
+@router.get("/assessment/waves")
+async def get_migration_waves(max_wave_size: int = 10):
+    """Get migration wave recommendations.
+    
+    Args:
+        max_wave_size: Maximum number of components per wave (default: 10)
+    
+    Returns:
+        Migration wave plan with component groupings
+    """
+    if not wave_planner:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Assessment module not available. Graph store must be enabled."
+        )
+    
+    try:
+        wave_plan = report_generator.generate_wave_plan(max_wave_size=max_wave_size)
+        return JSONResponse(content=wave_plan)
+    except Exception as e:
+        logger.error(f"Error generating migration waves: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate migration waves: {str(e)}"
+        )
+
+
+@router.get("/assessment/report")
+async def get_assessment_report(format: str = "json"):
+    """Generate assessment report.
+    
+    Args:
+        format: Report format - "json" or "summary" (default: "json")
+    
+    Returns:
+        Assessment report in requested format
+    """
+    if not report_generator:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Assessment module not available. Graph store must be enabled."
+        )
+    
+    try:
+        if format == "summary":
+            report = report_generator.generate_summary_report()
+        else:
+            report = report_generator.generate_detailed_report()
+        
+        return JSONResponse(content=report)
+    except Exception as e:
+        logger.error(f"Error generating assessment report: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate assessment report: {str(e)}"
         )
 
 

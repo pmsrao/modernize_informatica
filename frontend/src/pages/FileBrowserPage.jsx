@@ -5,8 +5,6 @@ export default function FileBrowserPage() {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(null);
   const [filterType, setFilterType] = useState('all');
   const [selectedFile, setSelectedFile] = useState(null);
   const [summary, setSummary] = useState(null);
@@ -36,46 +34,6 @@ export default function FileBrowserPage() {
     loadFiles();
   }, [filterType]);
 
-  const handleDirectoryUpload = async (event) => {
-    const selectedFiles = Array.from(event.target.files);
-    if (selectedFiles.length === 0) return;
-
-    setUploading(true);
-    setError(null);
-    setUploadProgress({ uploaded: 0, total: selectedFiles.length });
-
-    try {
-      const formData = new FormData();
-      selectedFiles.forEach(file => {
-        if (file.name.endsWith('.xml')) {
-          formData.append('files', file);
-        }
-      });
-
-      const result = await apiClient.uploadDirectory(formData);
-      
-      if (result.success) {
-        setUploadProgress({
-          uploaded: result.summary.uploaded,
-          total: result.summary.total_files,
-          errors: result.summary.errors
-        });
-        
-        // Reload files
-        await loadFiles();
-        
-        // Show success message
-        setTimeout(() => {
-          setUploadProgress(null);
-        }, 3000);
-      }
-    } catch (err) {
-      setError(err.message || 'Directory upload failed');
-      console.error('Upload error:', err);
-    } finally {
-      setUploading(false);
-    }
-  };
 
   const handleFileClick = (file) => {
     setSelectedFile(file);
@@ -120,64 +78,11 @@ export default function FileBrowserPage() {
       <div style={{ marginBottom: '20px', borderBottom: '2px solid #ddd', paddingBottom: '20px' }}>
         <h1 style={{ margin: 0, color: '#333' }}>File Browser</h1>
         <p style={{ margin: '5px 0', color: '#666' }}>
-          Upload and manage Informatica XML files
+          View uploaded Informatica XML files (read-only)
         </p>
       </div>
 
-      {/* Upload Section */}
-      <div style={{ 
-        marginBottom: '20px', 
-        padding: '20px', 
-        background: '#f5f5f5', 
-        borderRadius: '8px',
-        border: '2px dashed #ddd'
-      }}>
-        <h3 style={{ marginTop: 0 }}>Upload Directory</h3>
-        <p style={{ color: '#666', fontSize: '14px', marginBottom: '15px' }}>
-          Select multiple XML files to upload at once. All files will be scanned and categorized automatically.
-        </p>
-        <input
-          type="file"
-          multiple
-          accept=".xml"
-          onChange={handleDirectoryUpload}
-          disabled={uploading}
-          style={{ display: 'none' }}
-          id="directory-upload"
-        />
-        <label
-          htmlFor="directory-upload"
-          style={{
-            display: 'inline-block',
-            padding: '10px 20px',
-            background: uploading ? '#ccc' : '#4A90E2',
-            color: 'white',
-            borderRadius: '6px',
-            cursor: uploading ? 'not-allowed' : 'pointer',
-            fontWeight: 'bold'
-          }}
-        >
-          {uploading ? 'Uploading...' : '📁 Select Multiple Files'}
-        </label>
-        
-        {uploadProgress && (
-          <div style={{ marginTop: '15px', padding: '10px', background: '#d4edda', borderRadius: '6px' }}>
-            <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>
-              Upload Progress: {uploadProgress.uploaded}/{uploadProgress.total} files
-            </div>
-            {uploadProgress.errors && uploadProgress.errors.length > 0 && (
-              <div style={{ marginTop: '10px', fontSize: '12px', color: '#721c24' }}>
-                <strong>Errors:</strong>
-                <ul style={{ margin: '5px 0', paddingLeft: '20px' }}>
-                  {uploadProgress.errors.map((err, idx) => (
-                    <li key={idx}>{err.filename}: {err.error}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      {/* Upload functionality removed - use Components page to view components from Neo4j */}
 
       {/* Summary Statistics */}
       {summary && Object.keys(summary).length > 0 && (
@@ -250,7 +155,7 @@ export default function FileBrowserPage() {
           <div style={{ padding: '40px', textAlign: 'center' }}>Loading files...</div>
         ) : filteredFiles.length === 0 ? (
           <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
-            <p>No files found. Upload files using the directory upload above.</p>
+            <p>No files found. Use Components page to view components from Neo4j.</p>
           </div>
         ) : (
           <div style={{ padding: '15px' }}>

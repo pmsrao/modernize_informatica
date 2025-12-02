@@ -61,6 +61,7 @@ class GeneratePySparkRequest(BaseModel):
 class GenerateDLTRequest(BaseModel):
     """Request model for DLT pipeline generation."""
     workflow_id: Optional[str] = Field(None, description="Workflow ID from version store")
+    mapping_id: Optional[str] = Field(None, description="Mapping ID from version store")
     canonical_model: Optional[Dict[str, Any]] = Field(None, description="Canonical model directly")
     file_id: Optional[str] = Field(None, description="File ID to parse and generate from")
 
@@ -79,6 +80,15 @@ class GenerateSpecRequest(BaseModel):
     file_id: Optional[str] = Field(None, description="File ID to parse and generate from")
 
 
+class GenerateOrchestrationRequest(BaseModel):
+    """Request model for workflow orchestration generation."""
+    workflow_id: Optional[str] = Field(None, description="Workflow ID from version store")
+    workflow_data: Optional[Dict[str, Any]] = Field(None, description="Workflow data directly")
+    file_id: Optional[str] = Field(None, description="File ID to parse and generate from")
+    platform: str = Field(default="airflow", description="Target platform (airflow, databricks, prefect)")
+    schedule: Optional[str] = Field(None, description="Schedule expression (cron for Airflow)")
+
+
 class GenerateResponse(BaseModel):
     """Response model for code generation."""
     success: bool = Field(..., description="Whether generation was successful")
@@ -87,6 +97,7 @@ class GenerateResponse(BaseModel):
     message: str = Field(default="Code generated successfully")
     errors: List[str] = Field(default_factory=list, description="Any errors encountered")
     review: Optional[Dict[str, Any]] = Field(None, description="Optional code review results")
+    quality_check: Optional[Dict[str, Any]] = Field(None, description="Optional code quality check results")
 
 
 # AI Analysis Models

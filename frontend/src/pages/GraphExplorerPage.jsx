@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import ReactFlow, { 
   Background, 
   Controls, 
@@ -11,6 +11,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import apiClient from '../services/api.js';
 
+// Define nodeTypes and edgeTypes outside component to prevent recreation on each render
 const nodeTypes = {
   mapping: ({ data }) => (
     <div style={{
@@ -109,21 +110,35 @@ const nodeTypes = {
   }
 };
 
-export default function GraphExplorerPage() {
+// Define edgeTypes outside component
+const edgeTypes = {};
+
+export default function GraphExplorerPage({ initialMapping = null }) {
   const [mappings, setMappings] = useState([]);
-  const [selectedMapping, setSelectedMapping] = useState(null);
+  const [selectedMapping, setSelectedMapping] = useState(initialMapping);
   const [graphData, setGraphData] = useState({ nodes: [], edges: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [view, setView] = useState('list'); // 'list', 'graph', 'details'
+  const [view, setView] = useState(initialMapping ? 'graph' : 'list'); // 'list', 'graph', 'details'
   const [statistics, setStatistics] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedNode, setSelectedNode] = useState(null);
+
+  // Memoize nodeTypes and edgeTypes to ensure stable reference (even though they're already outside component)
+  const memoizedNodeTypes = useMemo(() => nodeTypes, []);
+  const memoizedEdgeTypes = useMemo(() => edgeTypes, []);
 
   useEffect(() => {
     loadMappings();
     loadStatistics();
   }, []);
+
+  useEffect(() => {
+    if (initialMapping && !selectedMapping) {
+      setSelectedMapping(initialMapping);
+      setView('graph');
+    }
+  }, [initialMapping]);
 
   useEffect(() => {
     if (selectedMapping) {
@@ -543,8 +558,8 @@ export default function GraphExplorerPage() {
                 <ReactFlow
                   nodes={graphData.nodes}
                   edges={graphData.edges}
-                  nodeTypes={nodeTypes}
-                  edgeTypes={{}}
+                  nodeTypes={memoizedNodeTypes}
+                  edgeTypes={memoizedEdgeTypes}
                   onNodeClick={handleNodeClick}
                   fitView
                   fitViewOptions={{ padding: 0.2 }}

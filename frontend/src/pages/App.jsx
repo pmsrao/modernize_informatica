@@ -1,21 +1,27 @@
 
 import React, { useState } from 'react'
-import UploadPage from './UploadPage.jsx'
 import ViewSpecPage from './ViewSpecPage.jsx'
 import LineagePage from './LineagePage.jsx'
 import GraphExplorerPage from './GraphExplorerPage.jsx'
 import FileBrowserPage from './FileBrowserPage.jsx'
 import HierarchyPage from './HierarchyPage.jsx'
+import CanonicalModelPage from './CanonicalModelPage.jsx'
+import ComponentsPage from './ComponentsPage.jsx'
+import SourceRepoViewPage from './SourceRepoViewPage.jsx'
+import CodeViewPage from './CodeViewPage.jsx'
+import CodeRepositoryPage from './CodeRepositoryPage.jsx'
+import AssessmentPage from './AssessmentPage.jsx'
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState('browser'); // 'browser', 'upload', 'spec', 'lineage', 'graph'
+  const [currentPage, setCurrentPage] = useState('source-repo'); // 'source-repo', 'components', 'canonical', 'code-view', 'code-repository'
 
   const navStyle = {
     display: 'flex',
     gap: '10px',
     marginBottom: '20px',
     borderBottom: '2px solid #ddd',
-    paddingBottom: '10px'
+    paddingBottom: '10px',
+    flexWrap: 'wrap'
   };
 
   const navButtonStyle = (isActive) => ({
@@ -36,51 +42,51 @@ export default function App() {
         <h1 style={{ margin: '0 0 10px 0', color: '#333' }}>Informatica Modernization Accelerator</h1>
         <div style={navStyle}>
           <button 
-            style={navButtonStyle(currentPage === 'browser')}
-            onClick={() => setCurrentPage('browser')}
+            style={navButtonStyle(currentPage === 'source-repo')}
+            onClick={() => setCurrentPage('source-repo')}
           >
-            📁 File Browser
+            📂 Source Repo View
           </button>
           <button 
-            style={navButtonStyle(currentPage === 'graph')}
-            onClick={() => setCurrentPage('graph')}
+            style={navButtonStyle(currentPage === 'components')}
+            onClick={() => setCurrentPage('components')}
           >
-            Graph Explorer
+            📦 Component View
           </button>
           <button 
-            style={navButtonStyle(currentPage === 'upload')}
-            onClick={() => setCurrentPage('upload')}
+            style={navButtonStyle(currentPage === 'canonical')}
+            onClick={() => setCurrentPage('canonical')}
           >
-            Upload & Parse
+            📊 Canonical Model
           </button>
           <button 
-            style={navButtonStyle(currentPage === 'spec')}
-            onClick={() => setCurrentPage('spec')}
+            style={navButtonStyle(currentPage === 'assessment')}
+            onClick={() => setCurrentPage('assessment')}
           >
-            View Spec
+            📈 Assessment
           </button>
           <button 
-            style={navButtonStyle(currentPage === 'lineage')}
-            onClick={() => setCurrentPage('lineage')}
+            style={navButtonStyle(currentPage === 'code-view')}
+            onClick={() => setCurrentPage('code-view')}
           >
-            Lineage
+            💻 Code View
           </button>
           <button 
-            style={navButtonStyle(currentPage === 'hierarchy')}
-            onClick={() => setCurrentPage('hierarchy')}
+            style={navButtonStyle(currentPage === 'code-repository')}
+            onClick={() => setCurrentPage('code-repository')}
           >
-            Hierarchy
+            📁 Code Repository
           </button>
         </div>
       </div>
 
       <div>
-        {currentPage === 'browser' && <FileBrowserPage />}
-        {currentPage === 'graph' && <GraphExplorerPage />}
-        {currentPage === 'upload' && <UploadPage />}
-        {currentPage === 'spec' && <ViewSpecPage />}
-        {currentPage === 'lineage' && <LineagePage />}
-        {currentPage === 'hierarchy' && <HierarchyPage />}
+        {currentPage === 'source-repo' && <SourceRepoViewPage />}
+        {currentPage === 'components' && <ComponentsPage />}
+        {currentPage === 'canonical' && <CanonicalModelPage />}
+        {currentPage === 'assessment' && <AssessmentPage />}
+        {currentPage === 'code-view' && <CodeViewPage />}
+        {currentPage === 'code-repository' && <CodeRepositoryPage />}
       </div>
     </div>
   )

@@ -354,4 +354,457 @@ class GraphQueries:
             """)
             
             return [dict(record) for record in result]
+    
+    def list_workflows(self) -> List[Dict[str, Any]]:
+        """List all workflows in the graph.
+        
+        Returns:
+            List of workflows with metadata (using generic Task terminology)
+            Note: Neo4j stores tasks as Session nodes, but we return generic terminology
+        """
+        with self.graph_store.driver.session() as session:
+            # Query Neo4j using Session label (internal storage)
+            # Return as task_count (generic canonical model terminology)
+            result = session.run("""
+                MATCH (w:Workflow)
+                OPTIONAL MATCH (w)-[:CONTAINS]->(t:Session)
+                RETURN w.name as name,
+                       w.type as type,
+                       count(DISTINCT t) as task_count
+                ORDER BY w.name
+            """)
+            
+            workflows = []
+            for record in result:
+                workflows.append({
+                    "name": record["name"],
+                    "type": record["type"],
+                    "task_count": record["task_count"]
+                })
+            return workflows
+    
+    def get_workflow_structure(self, workflow_name: str) -> Optional[Dict[str, Any]]:
+        """Get complete workflow structure with tasks and transformations.
+        
+        Returns a generic canonical model representation:
+        - Workflow contains Tasks (generic term for Informatica Sessions)
+        - Tasks contain Transformations (generic term for Informatica Mappings)
+        
+        Args:
+            workflow_name: Workflow name
+            
+        Returns:
+            Workflow structure with tasks and transformations, or None if not found
+            Structure: {
+                "name": "...",
+                "type": "...",
+                "properties": {...},
+                "tasks": [  # Generic term (Informatica: Sessions)
+                    {
+                        "name": "...",
+                        "type": "...",
+                        "properties": {...},
+                        "transformations": [...]  # Generic term (Informatica: Mappings)
+                    }
+                ]
+            }
+        """
+        with self.graph_store.driver.session() as session:
+            # Get workflow
+            workflow_result = session.run("""
+                MATCH (w:Workflow {name: $name})
+                RETURN w.name as name, w.type as type, properties(w) as properties
+            """, name=workflow_name).single()
+            
+            if not workflow_result:
+                return None
+            
+            workflow = {
+                "name": workflow_result["name"],
+                "type": workflow_result["type"],
+                "properties": dict(workflow_result["properties"]) if workflow_result["properties"] else {}
+            }
+            
+            # Get tasks in workflow (directly or via worklets) with their transformations
+            # Note: Neo4j uses Session/Mapping labels, but we return generic Task/Transformation terminology
+            # First, get all tasks (stored as Session nodes in Neo4j)
+            tasks_result = session.run("""
+                MATCH (w:Workflow {name: $name})
+                OPTIONAL MATCH (w)-[:CONTAINS]->(t:Session)
+                OPTIONAL MATCH (w)-[:CONTAINS]->(wl:Worklet)-[:CONTAINS]->(t2:Session)
+                WITH collect(DISTINCT t) + collect(DISTINCT t2) as all_tasks
+                UNWIND [task IN all_tasks WHERE task IS NOT NULL] as task_node
+                RETURN DISTINCT task_node.name as name, 
+                       task_node.type as type, 
+                       properties(task_node) as properties
+                ORDER BY task_node.name
+            """, name=workflow_name)
+            
+            # Then, for each task, get its transformations (stored as Mapping nodes in Neo4j)
+            tasks = []
+            for task_record in tasks_result:
+                task_name = task_record["name"]
+                if not task_name:
+                    continue
+                    
+                task_props = dict(task_record["properties"]) if task_record["properties"] else {}
+                
+                # Get transformations for this task - check if EXECUTES relationship exists
+                # Note: Neo4j stores as Session->EXECUTES->Mapping, but we return as Task->Transformations
+                transformations_result = session.run("""
+                    MATCH (s:Session {name: $task_name})
+                    OPTIONAL MATCH (s)-[r]->(m:Mapping)
+                    WHERE r IS NULL OR type(r) = 'EXECUTES'
+                    RETURN m.name as name, 
+                           m.mapping_name as mapping_name,
+                           m.complexity as complexity
+                    ORDER BY m.name
+                """, task_name=task_name)
+                
+                transformations = []
+                for transformation_record in transformations_result:
+                    if transformation_record.get("name"):
+                        transformations.append({
+                            "name": transformation_record.get("name"),
+                            "transformation_name": transformation_record.get("mapping_name"),
+                            "complexity": transformation_record.get("complexity")
+                        })
+                
+                tasks.append({
+                    "name": task_name,
+                    "type": task_record["type"],
+                    "properties": task_props,
+                    "transformations": transformations
+                })
+            
+            workflow["tasks"] = tasks
+            return workflow
+    
+    def get_transformations_in_workflow(self, workflow_name: str) -> List[Dict[str, Any]]:
+        """Get all transformations in a workflow (via tasks).
+        
+        Args:
+            workflow_name: Workflow name
+            
+        Returns:
+            List of transformations in the workflow (generic canonical model terminology)
+            Note: Neo4j stores as Session->EXECUTES->Mapping, but we return as Task->Transformations
+        """
+        with self.graph_store.driver.session() as session:
+            result = session.run("""
+                MATCH (w:Workflow {name: $name})-[:CONTAINS]->(t:Session)-[r]->(m:Mapping)
+                WHERE r IS NULL OR type(r) = 'EXECUTES'
+                RETURN DISTINCT m.name as name, 
+                       m.mapping_name as mapping_name,
+                       m.complexity as complexity,
+                       t.name as task_name
+                ORDER BY t.name, m.name
+            """, name=workflow_name)
+            
+            return [dict(record) for record in result]
+    
+    def get_tasks_in_workflow(self, workflow_name: str) -> List[Dict[str, Any]]:
+        """Get all tasks in a workflow.
+        
+        Args:
+            workflow_name: Workflow name
+            
+        Returns:
+            List of tasks in the workflow (generic canonical model terminology)
+            Note: Neo4j stores tasks as Session nodes, but we return generic Task terminology
+        """
+        with self.graph_store.driver.session() as session:
+            result = session.run("""
+                MATCH (w:Workflow {name: $name})-[:CONTAINS]->(t:Session)
+                RETURN t.name as name, t.type as type, properties(t) as properties
+                ORDER BY t.name
+            """, name=workflow_name)
+            
+            return [dict(record) for record in result]
+    
+    def get_component_file_metadata(self, component_name: str, component_type: str) -> Optional[Dict[str, Any]]:
+        """Get file metadata for a component.
+        
+        Args:
+            component_name: Name of the component
+            component_type: Type of component (Workflow, Session, Worklet, Mapping)
+            
+        Returns:
+            File metadata dictionary or None
+        """
+        return self.graph_store.get_file_metadata(component_name, component_type)
+    
+    def list_all_source_files(self) -> List[Dict[str, Any]]:
+        """List all source files with metadata.
+        
+        Returns:
+            List of source file metadata dictionaries
+        """
+        with self.graph_store.driver.session() as session:
+            result = session.run("""
+                MATCH (f:SourceFile)
+                RETURN f
+                ORDER BY f.filename
+            """)
+            
+            return [dict(record["f"]) for record in result]
+    
+    def get_components_by_file(self, file_path: str) -> List[Dict[str, Any]]:
+        """Find components loaded from a specific file.
+        
+        Args:
+            file_path: Path to the source file
+            
+        Returns:
+            List of components with their types
+        """
+        with self.graph_store.driver.session() as session:
+            result = session.run("""
+                MATCH (f:SourceFile {file_path: $file_path})<-[:LOADED_FROM]-(component)
+                RETURN labels(component)[0] as component_type, 
+                       component.name as component_name,
+                       properties(component) as properties
+            """, file_path=file_path)
+            
+            return [dict(record) for record in result]
+    
+    def get_mapping_code_files(self, mapping_name: str) -> List[Dict[str, Any]]:
+        """Get all code files for a mapping.
+        
+        Args:
+            mapping_name: Name of the mapping
+            
+        Returns:
+            List of code metadata dictionaries
+        """
+        return self.graph_store.get_code_metadata(mapping_name)
+    
+    def list_all_code_files(self) -> List[Dict[str, Any]]:
+        """List all generated code files with metadata.
+        
+        Returns:
+            List of code metadata dictionaries
+        """
+        return self.graph_store.list_all_code_files()
+    
+    def get_code_repository_structure(self) -> Dict[str, Any]:
+        """Get tree structure of generated code repository.
+        
+        Returns:
+            Dictionary with repository tree structure organized by workflow/session/mapping
+        """
+        with self.graph_store.driver.session() as session:
+            # Check if GeneratedCode nodes exist first to avoid warnings
+            check_result = session.run("MATCH (c:GeneratedCode) RETURN count(c) as count").single()
+            if not check_result or check_result["count"] == 0:
+                # No code files exist yet, return empty structure
+                return {}
+            
+            # Get all mappings with their code files and workflow/session relationships
+            # Use OPTIONAL MATCH for HAS_CODE to handle cases where code hasn't been generated yet
+            # Handle both direct workflow->session and workflow->worklet->session paths
+            result = session.run("""
+                MATCH (m:Mapping)
+                OPTIONAL MATCH (s:Session)-[:EXECUTES]->(m)
+                OPTIONAL MATCH (w:Workflow)-[:CONTAINS]->(s)
+                OPTIONAL MATCH (w2:Workflow)-[:CONTAINS]->(wl:Worklet)-[:CONTAINS]->(s2:Session)
+                WHERE s2 = s
+                WITH m, s, 
+                     COALESCE(w.name, w2.name) as workflow_name
+                OPTIONAL MATCH (m)-[r:HAS_CODE]->(c:GeneratedCode)
+                WHERE c IS NOT NULL AND r IS NOT NULL
+                RETURN m.name as mapping_name,
+                       c.code_type as code_type,
+                       c.file_path as file_path,
+                       c.language as language,
+                       c.quality_score as quality_score,
+                       c.generated_at as generated_at,
+                       s.name as session_name,
+                       workflow_name
+                ORDER BY workflow_name, s.name, m.name, c.code_type
+            """)
+            
+            # Build tree structure
+            tree = {}
+            for record in result:
+                workflow_name = record.get("workflow_name") or "standalone"
+                session_name = record.get("session_name") or "standalone"
+                mapping_name = record["mapping_name"]
+                code_type = record["code_type"]
+                
+                if workflow_name not in tree:
+                    tree[workflow_name] = {}
+                if session_name not in tree[workflow_name]:
+                    tree[workflow_name][session_name] = {}
+                if mapping_name not in tree[workflow_name][session_name]:
+                    tree[workflow_name][session_name][mapping_name] = []
+                
+                tree[workflow_name][session_name][mapping_name].append({
+                    "code_type": code_type,
+                    "file_path": record["file_path"],
+                    "language": record["language"],
+                    "quality_score": record.get("quality_score"),
+                    "generated_at": record.get("generated_at")
+                })
+            
+            return tree
+    
+    def get_repository_statistics(self) -> Dict[str, Any]:
+        """Get repository statistics for assessment.
+        
+        Returns:
+            Dictionary with component counts and distributions
+        """
+        with self.graph_store.driver.session() as session:
+            stats = {}
+            
+            # Count all component types
+            component_types = ["Workflow", "Session", "Worklet", "Mapping", "Transformation", 
+                            "Source", "Target", "Table"]
+            
+            for comp_type in component_types:
+                result = session.run(f"MATCH (n:{comp_type}) RETURN count(n) as count").single()
+                stats[f"total_{comp_type.lower()}s"] = result["count"] if result else 0
+            
+            # Transformation type distribution
+            result = session.run("""
+                MATCH (t:Transformation)
+                RETURN t.type as type, count(t) as count
+                ORDER BY count DESC
+            """)
+            stats["transformation_type_distribution"] = {
+                record["type"]: record["count"] for record in result
+            }
+            
+            return stats
+    
+    def get_complexity_metrics(self) -> Dict[str, Any]:
+        """Get complexity metrics for assessment.
+        
+        Returns:
+            Dictionary with complexity analysis
+        """
+        with self.graph_store.driver.session() as session:
+            metrics = {}
+            
+            # Mapping complexity distribution
+            result = session.run("""
+                MATCH (m:Mapping)
+                WHERE m.complexity IS NOT NULL
+                RETURN m.complexity as complexity, count(m) as count
+            """)
+            metrics["mapping_complexity_distribution"] = {
+                record["complexity"]: record["count"] for record in result
+            }
+            
+            # Average transformations per mapping
+            result = session.run("""
+                MATCH (m:Mapping)
+                OPTIONAL MATCH (m)-[:HAS_TRANSFORMATION]->(t:Transformation)
+                WITH m, count(t) as trans_count
+                RETURN avg(trans_count) as avg_trans, 
+                       max(trans_count) as max_trans,
+                       min(trans_count) as min_trans
+            """).single()
+            
+            if result:
+                metrics["transformation_statistics"] = {
+                    "average": float(result["avg_trans"]) if result["avg_trans"] else 0.0,
+                    "max": result["max_trans"] if result["max_trans"] else 0,
+                    "min": result["min_trans"] if result["min_trans"] else 0
+                }
+            
+            return metrics
+    
+    def get_pattern_usage(self) -> Dict[str, Any]:
+        """Get pattern usage statistics for assessment.
+        
+        Returns:
+            Dictionary with pattern analysis
+        """
+        with self.graph_store.driver.session() as session:
+            patterns = {}
+            
+            # Transformation type patterns
+            result = session.run("""
+                MATCH (m:Mapping)-[:HAS_TRANSFORMATION]->(t:Transformation)
+                WITH t.type as trans_type, count(*) as usage_count
+                WHERE usage_count > 1
+                RETURN trans_type, usage_count
+                ORDER BY usage_count DESC
+                LIMIT 20
+            """)
+            patterns["transformation_patterns"] = [
+                {"type": record["trans_type"], "usage_count": record["usage_count"]}
+                for record in result
+            ]
+            
+            # SCD type distribution
+            result = session.run("""
+                MATCH (m:Mapping)
+                WHERE m.scd_type IS NOT NULL
+                RETURN m.scd_type as scd_type, count(m) as count
+            """)
+            patterns["scd_type_distribution"] = {
+                record["scd_type"]: record["count"] for record in result
+            }
+            
+            # External system usage
+            result = session.run("""
+                MATCH (m:Mapping)-[:HAS_SOURCE]->(s:Source)
+                WHERE s.database_type IS NOT NULL AND s.database_type <> 'Informatica'
+                RETURN DISTINCT s.database_type as system_type, count(DISTINCT m) as mapping_count
+            """)
+            patterns["external_system_usage"] = [
+                {"system_type": record["system_type"], "mapping_count": record["mapping_count"]}
+                for record in result
+            ]
+            
+            return patterns
+    
+    def get_dependency_graph(self) -> Dict[str, Any]:
+        """Get complete dependency graph for assessment.
+        
+        Returns:
+            Dictionary with dependency information
+        """
+        with self.graph_store.driver.session() as session:
+            # Get all mapping dependencies
+            result = session.run("""
+                MATCH (m1:Mapping)-[:DEPENDS_ON]->(m2:Mapping)
+                RETURN m1.name as source, m2.name as target
+            """)
+            
+            dependency_edges = [
+                {"source": record["source"], "target": record["target"]}
+                for record in result
+            ]
+            
+            # Get independent mappings
+            result = session.run("""
+                MATCH (m:Mapping)
+                WHERE NOT (m)-[:DEPENDS_ON]->()
+                RETURN m.name as name
+            """)
+            independent_mappings = [record["name"] for record in result]
+            
+            # Get highly dependent mappings
+            result = session.run("""
+                MATCH (m:Mapping)-[:DEPENDS_ON]->(dep:Mapping)
+                WITH m, count(dep) as dep_count
+                WHERE dep_count > 3
+                RETURN m.name as name, dep_count
+                ORDER BY dep_count DESC
+            """)
+            highly_dependent = [
+                {"name": record["name"], "dependency_count": record["dep_count"]}
+                for record in result
+            ]
+            
+            return {
+                "dependency_edges": dependency_edges,
+                "independent_mappings": independent_mappings,
+                "highly_dependent_mappings": highly_dependent,
+                "total_dependencies": len(dependency_edges)
+            }
 

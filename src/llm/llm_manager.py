@@ -85,6 +85,21 @@ class LLMManager:
             logger.error(f"LLM request failed: {str(e)}")
             raise
 
+    def generate(self, prompt: str, max_tokens: Optional[int] = None, use_cache: bool = True) -> str:
+        """Generate response from LLM (alias for ask with max_tokens parameter).
+        
+        Args:
+            prompt: The prompt to send
+            max_tokens: Maximum tokens (ignored for now, kept for API compatibility)
+            use_cache: Whether to use cache for this request
+            
+        Returns:
+            Response text from the model
+        """
+        # max_tokens is ignored for now as it's provider-specific
+        # In the future, this could be passed to the client if needed
+        return self.ask(prompt, use_cache=use_cache)
+
     def _get_cache_key(self, prompt: str) -> str:
         """Generate cache key for prompt.
         

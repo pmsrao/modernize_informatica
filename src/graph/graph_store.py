@@ -62,7 +62,12 @@ class GraphStore:
             "CREATE INDEX transformation_name IF NOT EXISTS FOR (t:Transformation) ON (t.name)",
             "CREATE INDEX table_name IF NOT EXISTS FOR (t:Table) ON (t.name)",
             "CREATE INDEX source_name IF NOT EXISTS FOR (s:Source) ON (s.name)",
-            "CREATE INDEX target_name IF NOT EXISTS FOR (t:Target) ON (t.name)"
+            "CREATE INDEX target_name IF NOT EXISTS FOR (t:Target) ON (t.name)",
+            "CREATE INDEX workflow_name IF NOT EXISTS FOR (w:Workflow) ON (w.name)",
+            "CREATE INDEX session_name IF NOT EXISTS FOR (s:Session) ON (s.name)",
+            "CREATE INDEX worklet_name IF NOT EXISTS FOR (w:Worklet) ON (w.name)",
+            "CREATE INDEX source_file_path IF NOT EXISTS FOR (f:SourceFile) ON (f.file_path)",
+            "CREATE INDEX generated_code_path IF NOT EXISTS FOR (c:GeneratedCode) ON (c.file_path)"
         ]
         
         with self.driver.session() as session:
@@ -131,13 +136,15 @@ class GraphStore:
             
             # Create Table node and link
             if table_name:
+                # Use 'Unknown' or empty string if database is None/empty
+                db_value = database if database else 'Unknown'
                 tx.run("""
                     MERGE (t:Table {name: $table, database: $database})
                     SET t.platform = COALESCE(t.platform, 'Unknown')
                     WITH t
                     MATCH (s:Source {name: $source, mapping: $mapping})
                     MERGE (s)-[:READS_TABLE]->(t)
-                """, table=table_name, database=database,
+                """, table=table_name, database=db_value,
                       source=source_name, mapping=mapping_name)
             
             # Create Field nodes
@@ -169,13 +176,15 @@ class GraphStore:
                   table=table_name, database=database)
             
             if table_name:
+                # Use 'Unknown' or empty string if database is None/empty
+                db_value = database if database else 'Unknown'
                 tx.run("""
                     MERGE (tab:Table {name: $table, database: $database})
                     SET tab.platform = COALESCE(tab.platform, 'Unknown')
                     WITH tab
                     MATCH (t:Target {name: $target, mapping: $mapping})
                     MERGE (t)-[:WRITES_TABLE]->(tab)
-                """, table=table_name, database=database,
+                """, table=table_name, database=db_value,
                       target=target_name, mapping=mapping_name)
         
         # 4. Create Transformation nodes
@@ -500,6 +509,428 @@ class GraphStore:
             """)
             
             return [record["name"] for record in result]
+    
+    def save_workflow(self, workflow_data: Dict[str, Any]) -> str:
+        """Save workflow to Neo4j.
+        
+        Args:
+            workflow_data: Workflow data dictionary with name, tasks, links
+            
+        Returns:
+            Workflow name
+        """
+        workflow_name = workflow_data.get("name", "unknown")
+        logger.info(f"Saving workflow to graph: {workflow_name}")
+        
+        with self.driver.session() as session:
+            session.execute_write(self._create_workflow_tx, workflow_data)
+        
+        logger.info(f"Successfully saved workflow to graph: {workflow_name}")
+        return workflow_name
+    
+    @staticmethod
+    def _create_workflow_tx(tx, workflow_data: Dict[str, Any]):
+        """Transaction function to create workflow in graph."""
+        workflow_name = workflow_data.get("name", "unknown")
+        
+        # Create Workflow node
+        workflow_props = {
+            "name": workflow_name,
+            "type": workflow_data.get("type", "WORKFLOW")
+        }
+        
+        tx.run("""
+            MERGE (w:Workflow {name: $name})
+            SET w += $props
+        """, name=workflow_name, props=workflow_props)
+        
+        # Process tasks (sessions, worklets, etc.)
+        tasks = workflow_data.get("tasks", [])
+        for task in tasks:
+            task_name = task.get("name", "")
+            task_type = task.get("type", "")
+            
+            if task_type == "Session" or "Session" in task_type:
+                # Create Session node and link to workflow
+                tx.run("""
+                    MERGE (s:Session {name: $name})
+                    SET s.type = $type
+                    WITH s
+                    MATCH (w:Workflow {name: $workflow})
+                    MERGE (w)-[:CONTAINS]->(s)
+                """, name=task_name, type=task_type, workflow=workflow_name)
+                
+                # Link session to mapping if mapping name is available
+                mapping_name = task.get("mapping_name")
+                if mapping_name:
+                    tx.run("""
+                        MATCH (s:Session {name: $session})
+                        MATCH (m:Mapping {name: $mapping})
+                        MERGE (s)-[:EXECUTES]->(m)
+                    """, session=task_name, mapping=mapping_name)
+            
+            elif task_type == "Worklet" or "Worklet" in task_type:
+                # Create Worklet node and link to workflow
+                worklet_name = task.get("worklet_name") or task_name
+                tx.run("""
+                    MERGE (wl:Worklet {name: $name})
+                    SET wl.type = $type
+                    WITH wl
+                    MATCH (w:Workflow {name: $workflow})
+                    MERGE (w)-[:CONTAINS]->(wl)
+                """, name=worklet_name, type=task_type, workflow=workflow_name)
+        
+        # Process links (dependencies)
+        links = workflow_data.get("links", [])
+        for link in links:
+            from_task = link.get("from", "")
+            to_task = link.get("to", "")
+            link_type = link.get("from_link", "Success")  # Success, Failed, etc.
+            
+            if from_task and to_task:
+                # Create dependency relationship
+                # Try to find nodes (could be Session or Worklet)
+                tx.run("""
+                    MATCH (from_node)
+                    WHERE (from_node:Session OR from_node:Worklet) AND from_node.name = $from_task
+                    MATCH (to_node)
+                    WHERE (to_node:Session OR to_node:Worklet) AND to_node.name = $to_task
+                    MERGE (from_node)-[r:DEPENDS_ON]->(to_node)
+                    SET r.link_type = $link_type
+                """, from_task=from_task, to_task=to_task, link_type=link_type)
+    
+    def save_session(self, session_data: Dict[str, Any], workflow_name: Optional[str] = None) -> str:
+        """Save session to Neo4j.
+        
+        Args:
+            session_data: Session data dictionary with name, mapping, config
+            workflow_name: Optional workflow name to link session to
+            
+        Returns:
+            Session name
+        """
+        session_name = session_data.get("name", "unknown")
+        logger.info(f"Saving session to graph: {session_name}")
+        
+        with self.driver.session() as session:
+            session.execute_write(self._create_session_tx, session_data, workflow_name)
+        
+        logger.info(f"Successfully saved session to graph: {session_name}")
+        return session_name
+    
+    @staticmethod
+    def _create_session_tx(tx, session_data: Dict[str, Any], workflow_name: Optional[str] = None):
+        """Transaction function to create session in graph."""
+        session_name = session_data.get("name", "unknown")
+        # Handle both "mapping" and "mapping_name" field names
+        mapping_name = session_data.get("mapping_name") or session_data.get("mapping")
+        
+        # Create Session node
+        session_props = {
+            "name": session_name,
+            "type": session_data.get("type", "SESSION")
+        }
+        
+        tx.run("""
+            MERGE (s:Session {name: $name})
+            SET s += $props
+        """, name=session_name, props=session_props)
+        
+        # Link to workflow if provided
+        if workflow_name:
+            # First ensure workflow exists
+            tx.run("""
+                MERGE (w:Workflow {name: $workflow})
+            """, workflow=workflow_name)
+            
+            # Then create the relationship
+            result = tx.run("""
+                MATCH (s:Session {name: $session})
+                MATCH (w:Workflow {name: $workflow})
+                MERGE (w)-[r:CONTAINS]->(s)
+                RETURN r
+            """, session=session_name, workflow=workflow_name)
+            
+            # Log if relationship was created
+            if not result.single():
+                logger.warning(f"Failed to create CONTAINS relationship: Workflow {workflow_name} -> Session {session_name}")
+        
+        # Link to mapping if available
+        if mapping_name:
+            tx.run("""
+                MATCH (s:Session {name: $session})
+                MATCH (m:Mapping {name: $mapping})
+                MERGE (s)-[:EXECUTES]->(m)
+            """, session=session_name, mapping=mapping_name)
+    
+    def save_worklet(self, worklet_data: Dict[str, Any], workflow_name: Optional[str] = None) -> str:
+        """Save worklet to Neo4j.
+        
+        Args:
+            worklet_data: Worklet data dictionary with name, tasks
+            workflow_name: Optional workflow name to link worklet to
+            
+        Returns:
+            Worklet name
+        """
+        worklet_name = worklet_data.get("name", "unknown")
+        logger.info(f"Saving worklet to graph: {worklet_name}")
+        
+        with self.driver.session() as session:
+            session.execute_write(self._create_worklet_tx, worklet_data, workflow_name)
+        
+        logger.info(f"Successfully saved worklet to graph: {worklet_name}")
+        return worklet_name
+    
+    @staticmethod
+    def _create_worklet_tx(tx, worklet_data: Dict[str, Any], workflow_name: Optional[str] = None):
+        """Transaction function to create worklet in graph."""
+        worklet_name = worklet_data.get("name", "unknown")
+        
+        # Create Worklet node
+        worklet_props = {
+            "name": worklet_name,
+            "type": "WORKLET"
+        }
+        
+        tx.run("""
+            MERGE (wl:Worklet {name: $name})
+            SET wl += $props
+        """, name=worklet_name, props=worklet_props)
+        
+        # Link to workflow if provided
+        if workflow_name:
+            tx.run("""
+                MATCH (wl:Worklet {name: $worklet})
+                MATCH (w:Workflow {name: $workflow})
+                MERGE (w)-[:CONTAINS]->(wl)
+            """, worklet=worklet_name, workflow=workflow_name)
+        
+        # Process tasks in worklet (sessions, etc.)
+        tasks = worklet_data.get("tasks", [])
+        for task in tasks:
+            task_name = task.get("name", "")
+            task_type = task.get("type", "")
+            
+            if task_type == "Session" or "Session" in task_type:
+                # Link worklet to session
+                tx.run("""
+                    MATCH (wl:Worklet {name: $worklet})
+                    MERGE (s:Session {name: $session})
+                    SET s.type = $type
+                    MERGE (wl)-[:CONTAINS]->(s)
+                """, worklet=worklet_name, session=task_name, type=task_type)
+                
+                # Link session to mapping if available
+                mapping_name = task.get("mapping_name")
+                if mapping_name:
+                    tx.run("""
+                        MATCH (s:Session {name: $session})
+                        MATCH (m:Mapping {name: $mapping})
+                        MERGE (s)-[:EXECUTES]->(m)
+                    """, session=task_name, mapping=mapping_name)
+    
+    def save_file_metadata(self, component_type: str, component_name: str, 
+                          file_path: str, filename: str, file_size: int = None,
+                          uploaded_at: str = None, parsed_at: str = None) -> str:
+        """Save file metadata to Neo4j and link to component.
+        
+        Args:
+            component_type: Type of component (Workflow, Session, Worklet, Mapping)
+            component_name: Name of the component
+            file_path: Full path to the source file
+            filename: Original filename
+            file_size: File size in bytes (optional)
+            uploaded_at: Upload timestamp (optional)
+            parsed_at: Parse timestamp (optional)
+            
+        Returns:
+            File path (used as identifier)
+        """
+        logger.info(f"Saving file metadata for {component_type}: {component_name} from {filename}")
+        
+        with self.driver.session() as session:
+            session.execute_write(self._create_file_metadata_tx, 
+                                 component_type, component_name, file_path, 
+                                 filename, file_size, uploaded_at, parsed_at)
+        
+        logger.info(f"Successfully saved file metadata: {file_path}")
+        return file_path
+    
+    @staticmethod
+    def _create_file_metadata_tx(tx, component_type: str, component_name: str,
+                                 file_path: str, filename: str, file_size: int = None,
+                                 uploaded_at: str = None, parsed_at: str = None):
+        """Transaction function to create file metadata and link to component."""
+        # Create SourceFile node
+        file_props = {
+            "filename": filename,
+            "file_path": file_path,
+            "file_type": component_type.lower(),
+            "file_size": file_size,
+            "uploaded_at": uploaded_at or "",
+            "parsed_at": parsed_at or ""
+        }
+        
+        tx.run("""
+            MERGE (f:SourceFile {file_path: $file_path})
+            SET f += $props
+        """, file_path=file_path, props=file_props)
+        
+        # Link to component based on type
+        if component_type == "Workflow":
+            tx.run("""
+                MATCH (f:SourceFile {file_path: $file_path})
+                MATCH (w:Workflow {name: $component_name})
+                MERGE (w)-[:LOADED_FROM]->(f)
+            """, file_path=file_path, component_name=component_name)
+        elif component_type == "Session":
+            tx.run("""
+                MATCH (f:SourceFile {file_path: $file_path})
+                MATCH (s:Session {name: $component_name})
+                MERGE (s)-[:LOADED_FROM]->(f)
+            """, file_path=file_path, component_name=component_name)
+        elif component_type == "Worklet":
+            tx.run("""
+                MATCH (f:SourceFile {file_path: $file_path})
+                MATCH (wl:Worklet {name: $component_name})
+                MERGE (wl)-[:LOADED_FROM]->(f)
+            """, file_path=file_path, component_name=component_name)
+        elif component_type == "Mapping":
+            tx.run("""
+                MATCH (f:SourceFile {file_path: $file_path})
+                MATCH (m:Mapping {name: $component_name})
+                MERGE (m)-[:LOADED_FROM]->(f)
+            """, file_path=file_path, component_name=component_name)
+    
+    def get_file_metadata(self, component_name: str, component_type: str) -> Optional[Dict[str, Any]]:
+        """Get file metadata for a component.
+        
+        Args:
+            component_name: Name of the component
+            component_type: Type of component (Workflow, Session, Worklet, Mapping)
+            
+        Returns:
+            File metadata dictionary or None
+        """
+        with self.driver.session() as session:
+            if component_type == "Workflow":
+                result = session.run("""
+                    MATCH (w:Workflow {name: $name})-[:LOADED_FROM]->(f:SourceFile)
+                    RETURN f
+                """, name=component_name).single()
+            elif component_type == "Session":
+                result = session.run("""
+                    MATCH (s:Session {name: $name})-[:LOADED_FROM]->(f:SourceFile)
+                    RETURN f
+                """, name=component_name).single()
+            elif component_type == "Worklet":
+                result = session.run("""
+                    MATCH (wl:Worklet {name: $name})-[:LOADED_FROM]->(f:SourceFile)
+                    RETURN f
+                """, name=component_name).single()
+            elif component_type == "Mapping":
+                result = session.run("""
+                    MATCH (m:Mapping {name: $name})-[:LOADED_FROM]->(f:SourceFile)
+                    RETURN f
+                """, name=component_name).single()
+            else:
+                return None
+            
+            if result:
+                return dict(result["f"])
+            return None
+    
+    def save_code_metadata(self, mapping_name: str, code_type: str, file_path: str,
+                          language: str, quality_score: float = None) -> str:
+        """Save generated code metadata to Neo4j.
+        
+        Args:
+            mapping_name: Name of the mapping
+            code_type: Type of code (pyspark, dlt, sql)
+            file_path: Path to the generated code file
+            language: Programming language (python, sql)
+            quality_score: Code quality score (optional)
+            
+        Returns:
+            File path
+        """
+        logger.info(f"Saving code metadata for mapping {mapping_name}: {code_type}")
+        
+        with self.driver.session() as session:
+            session.execute_write(self._create_code_metadata_tx,
+                                 mapping_name, code_type, file_path, language, quality_score)
+        
+        logger.info(f"Successfully saved code metadata: {file_path}")
+        return file_path
+    
+    @staticmethod
+    def _create_code_metadata_tx(tx, mapping_name: str, code_type: str, file_path: str,
+                                 language: str, quality_score: float = None):
+        """Transaction function to create code metadata and link to mapping."""
+        from datetime import datetime
+        
+        code_props = {
+            "mapping_name": mapping_name,
+            "code_type": code_type,
+            "file_path": file_path,
+            "language": language,
+            "quality_score": quality_score,
+            "generated_at": datetime.now().isoformat()
+        }
+        
+        tx.run("""
+            MERGE (c:GeneratedCode {file_path: $file_path})
+            SET c += $props
+            WITH c
+            MATCH (m:Mapping {name: $mapping_name})
+            MERGE (m)-[:HAS_CODE]->(c)
+        """, file_path=file_path, mapping_name=mapping_name, props=code_props)
+    
+    def get_code_metadata(self, mapping_name: str) -> List[Dict[str, Any]]:
+        """Get all code metadata for a mapping.
+        
+        Args:
+            mapping_name: Name of the mapping
+            
+        Returns:
+            List of code metadata dictionaries
+        """
+        with self.driver.session() as session:
+            # Use OPTIONAL MATCH to handle cases where HAS_CODE relationship doesn't exist yet
+            # Check if GeneratedCode nodes exist first to avoid warnings
+            # Only query if there are any GeneratedCode nodes in the database
+            check_result = session.run("MATCH (c:GeneratedCode) RETURN count(c) as count").single()
+            if not check_result or check_result["count"] == 0:
+                # No code files exist yet, return empty list
+                return []
+            
+            result = session.run("""
+                MATCH (m:Mapping {name: $name})
+                OPTIONAL MATCH (m)-[r:HAS_CODE]->(c:GeneratedCode)
+                WHERE c IS NOT NULL AND r IS NOT NULL
+                RETURN c
+                ORDER BY CASE WHEN c.code_type IS NOT NULL THEN c.code_type ELSE '' END
+            """, name=mapping_name)
+            
+            return [dict(record["c"]) for record in result if record.get("c")]
+    
+    def list_all_code_files(self) -> List[Dict[str, Any]]:
+        """List all generated code files with metadata.
+        
+        Returns:
+            List of code metadata dictionaries
+        """
+        with self.driver.session() as session:
+            # Check if GeneratedCode nodes exist first
+            result = session.run("""
+                MATCH (c:GeneratedCode)
+                WHERE c.file_path IS NOT NULL
+                RETURN c
+                ORDER BY c.mapping_name, c.code_type
+            """)
+            
+            return [dict(record["c"]) for record in result]
     
     def close(self):
         """Close Neo4j connection."""

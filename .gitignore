@@ -82,3 +82,7 @@ Thumbs.db
 # Project specific
 *.drawio.bak
 
+# Test logs (but keep directory structure)
+test_log/*
+!test_log/.gitkeep
+

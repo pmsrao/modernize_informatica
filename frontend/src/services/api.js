@@ -81,10 +81,10 @@ class APIClient {
   }
 
   // Parsing Endpoints
-  async parseMapping(fileId) {
+  async parseMapping(fileId, enhanceModel = false) {
     return this.request('/api/v1/parse/mapping', {
       method: 'POST',
-      body: JSON.stringify({ file_id: fileId }),
+      body: JSON.stringify({ file_id: fileId, enhance_model: enhanceModel }),
     });
   }
 
@@ -122,9 +122,17 @@ class APIClient {
     });
   }
 
-  async generateDLT(workflowId, canonicalModel = null, fileId = null) {
+  async generateDLT(mappingIdOrWorkflowId, canonicalModel = null, fileId = null) {
     const body = {};
-    if (workflowId) body.workflow_id = workflowId;
+    // Try to determine if it's a mapping_id or workflow_id
+    // For now, support both - if it starts with M_ assume mapping, else workflow
+    if (mappingIdOrWorkflowId) {
+      if (mappingIdOrWorkflowId.startsWith('M_')) {
+        body.mapping_id = mappingIdOrWorkflowId;
+      } else {
+        body.workflow_id = mappingIdOrWorkflowId;
+      }
+    }
     if (canonicalModel) body.canonical_model = canonicalModel;
     if (fileId) body.file_id = fileId;
 
@@ -202,6 +210,18 @@ class APIClient {
     });
   }
 
+  async reviewCode(code, canonicalModel = null) {
+    const body = {
+      code: code
+    };
+    if (canonicalModel) body.canonical_model = canonicalModel;
+
+    return this.request('/api/v1/review/code', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
   // DAG Endpoints
   async buildDAG(workflowId, workflowData = null, fileId = null) {
     const body = {};
@@ -272,6 +292,112 @@ class APIClient {
 
   async getGraphStatistics() {
     return this.request('/api/v1/graph/statistics');
+  }
+
+  // Workflow Endpoints
+  async listWorkflows() {
+    try {
+      return await this.request('/api/v1/graph/workflows');
+    } catch (error) {
+      console.error('Error listing workflows:', error);
+      // Return empty list on error instead of throwing
+      return { success: false, workflows: [], message: error.message };
+    }
+  }
+
+  async getWorkflowStructure(workflowName) {
+    try {
+      return await this.request(`/api/v1/graph/workflows/${encodeURIComponent(workflowName)}`);
+    } catch (error) {
+      console.error('Error getting workflow structure:', error);
+      return { success: false, workflow: null, message: error.message };
+    }
+  }
+
+  // Component Endpoints
+  async getAllComponents() {
+    try {
+      return await this.request('/api/v1/graph/components');
+    } catch (error) {
+      console.error('Error getting all components:', error);
+      return { success: false, workflows: [], sessions: [], worklets: [], mappings: [], counts: {} };
+    }
+  }
+
+  async getFileMetadata(componentType, componentName) {
+    try {
+      return await this.request(`/api/v1/graph/files/${componentType}/${encodeURIComponent(componentName)}`);
+    } catch (error) {
+      console.error('Error getting file metadata:', error);
+      return { success: false, file_metadata: null, message: error.message };
+    }
+  }
+
+  // Code Endpoints
+  async getMappingCode(mappingName) {
+    try {
+      return await this.request(`/api/v1/graph/code/${encodeURIComponent(mappingName)}`);
+    } catch (error) {
+      console.error('Error getting mapping code:', error);
+      return { success: false, code_files: [], message: error.message };
+    }
+  }
+
+  async getCodeFile(filePath) {
+    try {
+      // Encode the file path for URL
+      const encodedPath = encodeURIComponent(filePath);
+      return await this.request(`/api/v1/graph/code/file/${encodedPath}`);
+    } catch (error) {
+      console.error('Error getting code file:', error);
+      return { success: false, code: null, message: error.message };
+    }
+  }
+
+  async getCodeRepository() {
+    try {
+      return await this.request('/api/v1/graph/code/repository');
+    } catch (error) {
+      console.error('Error getting code repository:', error);
+      return { success: false, repository: {}, message: error.message };
+    }
+  }
+
+  // Assessment Endpoints
+  async getAssessmentProfile() {
+    try {
+      return await this.request('/api/v1/assessment/profile');
+    } catch (error) {
+      console.error('Error fetching assessment profile:', error);
+      throw error;
+    }
+  }
+
+  async getAssessmentAnalysis() {
+    try {
+      return await this.request('/api/v1/assessment/analyze');
+    } catch (error) {
+      console.error('Error fetching assessment analysis:', error);
+      throw error;
+    }
+  }
+
+  async getMigrationWaves(maxWaveSize = 10) {
+    try {
+      return await this.request(`/api/v1/assessment/waves?max_wave_size=${maxWaveSize}`);
+    } catch (error) {
+      console.error('Error fetching migration waves:', error);
+      throw error;
+    }
+  }
+
+  async getAssessmentReport(format = 'json') {
+    try {
+      return await this.request(`/api/v1/assessment/report?format=${format}`);
+    } catch (error) {
+      console.error('Error fetching assessment report:', error);
+      throw error;
+    }
   }
 
   async findMappingsUsingTable(tableName, database = null) {
