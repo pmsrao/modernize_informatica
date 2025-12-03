@@ -248,6 +248,8 @@ class TestFlow:
                             # Save with both the mapplet name and with _mapplet suffix for lookup
                             version_store.save(mapplet_name, mapplet_data)
                             # Also save enhanced version if it exists
+                            # Derive base_dir from output_dir (output_dir is typically test_log/parsed)
+                            base_dir = os.path.dirname(output_dir) if os.path.dirname(output_dir) else output_dir
                             parse_ai_dir = os.path.join(base_dir, "parse_ai")
                             enhanced_file = os.path.join(parse_ai_dir, f"{mapplet_name}_mapplet_enhanced.json")
                             if os.path.exists(enhanced_file):

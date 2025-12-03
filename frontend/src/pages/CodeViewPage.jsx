@@ -46,18 +46,18 @@ export default function CodeViewPage() {
     setLoading(true);
     setError(null);
     try {
-      const result = await apiClient.listWorkflows();
+      const result = await apiClient.listPipelines();
       if (result.success) {
-        setWorkflows(result.workflows || []);
-        if (result.workflows && result.workflows.length > 0) {
-          setSelectedWorkflow(result.workflows[0].name);
+        setWorkflows(result.pipelines || []);
+        if (result.pipelines && result.pipelines.length > 0) {
+          setSelectedWorkflow(result.pipelines[0].name);
         }
       } else {
-        setError(result.message || 'Failed to load workflows');
+        setError(result.message || 'Failed to load pipelines');
       }
     } catch (err) {
-      setError(err.message || 'Failed to load workflows');
-      console.error('Error loading workflows:', err);
+      setError(err.message || 'Failed to load pipelines');
+      console.error('Error loading pipelines:', err);
     } finally {
       setLoading(false);
     }
@@ -67,11 +67,11 @@ export default function CodeViewPage() {
     setLoadingCode(true);
     setError(null);
     try {
-      const result = await apiClient.getWorkflowStructure(workflowName);
-      console.log('Workflow structure result:', result);
+      const result = await apiClient.getPipelineStructure(workflowName);
+      console.log('Pipeline structure result:', result);
       if (result.success) {
-        // API returns { success: true, workflow: {...} }
-        const workflow = result.workflow || result;
+        // API returns { success: true, pipeline: {...} }
+        const workflow = result.pipeline || result;
         console.log('Workflow structure:', workflow);
         console.log('Tasks/Sessions:', workflow.tasks || workflow.sessions);
         

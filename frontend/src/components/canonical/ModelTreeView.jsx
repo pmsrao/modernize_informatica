@@ -31,17 +31,17 @@ export default function ModelTreeView({
     setLoading(true);
     setError(null);
     try {
-      const result = await apiClient.listWorkflows();
+      const result = await apiClient.listPipelines();
       if (result.success) {
-        setWorkflows(result.workflows || []);
-        // Expand first workflow by default
-        if (result.workflows && result.workflows.length > 0) {
-          setExpanded(new Set([result.workflows[0].name]));
+        setWorkflows(result.pipelines || []);
+        // Expand first pipeline by default
+        if (result.pipelines && result.pipelines.length > 0) {
+          setExpanded(new Set([result.pipelines[0].name]));
         }
       }
     } catch (err) {
-      setError(err.message || 'Failed to load workflows');
-      console.error('Error loading workflows:', err);
+      setError(err.message || 'Failed to load pipelines');
+      console.error('Error loading pipelines:', err);
     } finally {
       setLoading(false);
     }
@@ -243,9 +243,9 @@ function WorkflowNode({
   const loadWorkflowStructure = async () => {
     setLoadingStructure(true);
     try {
-      const result = await apiClient.getWorkflowStructure(workflow.name);
-      if (result.success && result.workflow) {
-        setWorkflowStructure(result.workflow);
+      const result = await apiClient.getPipelineStructure(workflow.name);
+      if (result.success && result.pipeline) {
+        setWorkflowStructure(result.pipeline);
       }
     } catch (err) {
       console.error('Error loading workflow structure:', err);

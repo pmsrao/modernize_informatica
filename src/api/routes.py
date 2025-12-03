@@ -1754,19 +1754,19 @@ async def list_workflows():
         )
 
 
-@router.get("/graph/workflows/{workflow_name}")
-async def get_workflow_structure_endpoint(workflow_name: str):
-    """Get complete workflow structure with tasks and transformations.
+@router.get("/graph/pipelines/{pipeline_name}")
+async def get_pipeline_structure_endpoint(pipeline_name: str):
+    """Get complete pipeline structure with tasks and transformations.
     
     Returns a generic canonical model representation:
-    - Workflow contains Tasks (generic term for Informatica Sessions)
+    - Pipeline contains Tasks (generic term for Informatica Sessions)
     - Tasks contain Transformations (generic term for Informatica Mappings)
     
     Args:
-        workflow_name: Workflow name
+        pipeline_name: Pipeline name
         
     Returns:
-        Workflow structure with tasks and transformations in canonical model format
+        Pipeline structure with tasks and transformations in canonical model format
         Structure: {
             "name": "...",
             "type": "...",
@@ -1788,25 +1788,25 @@ async def get_workflow_structure_endpoint(workflow_name: str):
         )
     
     try:
-        structure = graph_queries.get_pipeline_structure(workflow_name)
+        structure = graph_queries.get_pipeline_structure(pipeline_name)
         
         if not structure:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Workflow not found: {workflow_name}"
+                detail=f"Pipeline not found: {pipeline_name}"
             )
         
         return {
             "success": True,
-            "workflow": structure
+            "pipeline": structure
         }
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Get workflow structure failed: {str(e)}", error=e)
+        logger.error(f"Get pipeline structure failed: {str(e)}", error=e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Get workflow structure failed: {str(e)}"
+            detail=f"Get pipeline structure failed: {str(e)}"
         )
 
 
@@ -1881,34 +1881,20 @@ async def list_all_components():
                 transformation_info["file_metadata"] = file_meta
             transformations_with_meta.append(transformation_info)
         
-        # Return both new generic names and old Informatica-specific names for backward compatibility
+        # Return generic platform-agnostic names
         return {
             "success": True,
-            # New generic names
             "pipelines": pipelines,
             "tasks": tasks,
             "sub_pipelines": sub_pipelines,
             "reusable_transformations": reusable_transformations,
             "transformations": transformations_with_meta,
-            # Old Informatica-specific names (for backward compatibility with frontend)
-            "workflows": pipelines,  # Alias for pipelines
-            "sessions": tasks,  # Alias for tasks
-            "worklets": sub_pipelines,  # Alias for sub_pipelines
-            "mapplets": reusable_transformations,  # Alias for reusable_transformations
-            "mappings": transformations_with_meta,  # Alias for transformations
             "counts": {
-                # New generic counts
                 "pipelines": len(pipelines),
                 "tasks": len(tasks),
                 "sub_pipelines": len(sub_pipelines),
                 "reusable_transformations": len(reusable_transformations),
-                "transformations": len(transformations),
-                # Old Informatica-specific counts (for backward compatibility)
-                "workflows": len(pipelines),
-                "sessions": len(tasks),
-                "worklets": len(sub_pipelines),
-                "mapplets": len(reusable_transformations),
-                "mappings": len(transformations)
+                "transformations": len(transformations)
             }
         }
     except Exception as e:

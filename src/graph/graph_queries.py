@@ -500,27 +500,6 @@ class GraphQueries:
             pipeline["tasks"] = tasks
             return pipeline
     
-    def get_transformations_in_workflow(self, workflow_name: str) -> List[Dict[str, Any]]:
-        """Get all transformations in a workflow (via tasks).
-        
-        Args:
-            workflow_name: Workflow/Pipeline name
-            
-        Returns:
-            List of transformations in the workflow
-        """
-        with self.graph_store.driver.session() as session:
-            result = session.run("""
-                MATCH (p:Pipeline {name: $name})-[:CONTAINS]->(t:Task)-[:EXECUTES]->(trans:Transformation)
-                WHERE trans.source_component_type = 'mapping' OR trans.source_component_type IS NULL
-                RETURN DISTINCT trans.name as name, 
-                       trans.transformation_name as transformation_name,
-                       trans.complexity as complexity,
-                       t.name as task_name
-                ORDER BY t.name, trans.name
-            """, name=pipeline_name)
-            
-            return [dict(record) for record in result]
     
     def get_tasks_in_pipeline(self, pipeline_name: str) -> List[Dict[str, Any]]:
         """Get all tasks in a workflow.
@@ -539,19 +518,6 @@ class GraphQueries:
             """, name=pipeline_name)
             
             return [dict(record) for record in result]
-    
-    # Backward compatibility aliases
-    def get_workflow_structure(self, workflow_name: str) -> Optional[Dict[str, Any]]:
-        """Backward compatibility alias for get_pipeline_structure."""
-        return self.get_pipeline_structure(workflow_name)
-    
-    def get_transformations_in_workflow(self, workflow_name: str) -> List[Dict[str, Any]]:
-        """Backward compatibility alias for get_transformations_in_pipeline."""
-        return self.get_transformations_in_pipeline(workflow_name)
-    
-    def get_tasks_in_workflow(self, workflow_name: str) -> List[Dict[str, Any]]:
-        """Backward compatibility alias for get_tasks_in_pipeline."""
-        return self.get_tasks_in_pipeline(workflow_name)
     
     def get_field_lineage(self, field_name: str, transformation_name: str) -> List[Dict[str, Any]]:
         """Get column-level lineage for a specific field.

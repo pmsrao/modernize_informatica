@@ -22,9 +22,9 @@ export default function CanonicalModelPage() {
     // Load workflow details
     setLoading(true);
     try {
-      const result = await apiClient.getWorkflowStructure(workflow.name);
+      const result = await apiClient.getPipelineStructure(workflow.name);
       if (result.success) {
-        setDetailData(result.workflow);
+        setDetailData(result.pipeline);
       } else {
         setError(result.message || 'Failed to load workflow details');
       }

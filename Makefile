@@ -110,7 +110,7 @@ test-all: $(TEST_LOG_DIR)
 clean:
 	@echo "🧹 Cleaning test_log directory contents..."
 	@if [ -d "$(TEST_LOG_DIR)" ]; then \
-		find $(TEST_LOG_DIR) -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} + 2>/dev/null || true; \
+		find $(TEST_LOG_DIR) -mindepth 1 -maxdepth 1 -type d -exec sh -c 'find "{}" -mindepth 1 -delete' \; 2>/dev/null || true; \
 		find $(TEST_LOG_DIR) -mindepth 1 -maxdepth 1 -type f ! -name ".gitkeep" -delete 2>/dev/null || true; \
 		echo "✅ Cleaned test_log directory contents (kept directory structure)"; \
 	else \

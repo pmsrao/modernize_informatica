@@ -38,18 +38,18 @@ export default function ComponentsPage() {
       const result = await apiClient.getAllComponents();
       if (result.success) {
         setComponents({
-          workflows: result.workflows || [],
-          sessions: result.sessions || [],
-          worklets: result.worklets || [],
-          mappings: result.mappings || [],
-          mapplets: result.mapplets || []
+          workflows: result.pipelines || [],
+          sessions: result.tasks || [],
+          worklets: result.sub_pipelines || [],
+          mappings: result.transformations || [],
+          mapplets: result.reusable_transformations || []
         });
         setCounts(result.counts || {
-          workflows: 0,
-          sessions: 0,
-          worklets: 0,
-          mappings: 0,
-          mapplets: 0
+          workflows: result.counts?.pipelines || 0,
+          sessions: result.counts?.tasks || 0,
+          worklets: result.counts?.sub_pipelines || 0,
+          mappings: result.counts?.transformations || 0,
+          mapplets: result.counts?.reusable_transformations || 0
         });
       } else {
         setError(result.message || 'Failed to load components');
