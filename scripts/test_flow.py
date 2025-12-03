@@ -1245,7 +1245,7 @@ class TestFlow:
             print(f"\n🔄 Processing workflow: {workflow_name}")
             
             # Get workflow structure
-            workflow_structure = graph_queries.get_workflow_structure(workflow_name)
+            workflow_structure = graph_queries.get_pipeline_structure(workflow_name)
             if not workflow_structure:
                 print(f"   ⚠️  Workflow structure not found: {workflow_name}")
                 continue
