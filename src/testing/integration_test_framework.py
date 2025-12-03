@@ -12,7 +12,7 @@ if str(project_root) not in sys.path:
 if str(project_root / "src") not in sys.path:
     sys.path.insert(0, str(project_root / "src"))
 
-from src.utils.logger import get_logger
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -225,7 +225,7 @@ class IntegrationTestFramework:
         Returns:
             Test result
         """
-        from src.validation.test_data_validator import TestDataValidator
+        from validation.test_data_validator import TestDataValidator
         
         validator = TestDataValidator()
         

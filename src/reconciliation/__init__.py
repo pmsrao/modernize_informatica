@@ -10,9 +10,9 @@ Informatica source data with Databricks target data, supporting:
 - Incremental reconciliation during phased migrations
 """
 
-from src.reconciliation.recon_engine import ReconciliationEngine
-from src.reconciliation.data_comparator import DataComparator
-from src.reconciliation.report_generator import ReconciliationReportGenerator
+from reconciliation.recon_engine import ReconciliationEngine
+from reconciliation.data_comparator import DataComparator
+from reconciliation.report_generator import ReconciliationReportGenerator
 
 __all__ = [
     "ReconciliationEngine",

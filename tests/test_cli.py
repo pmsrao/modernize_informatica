@@ -12,9 +12,9 @@ if str(project_root) not in sys.path:
 if str(project_root / "src") not in sys.path:
     sys.path.insert(0, str(project_root / "src"))
 
-from src.cli.config import Config
-from src.cli.errors import CLIError, ValidationError, ConfigurationError
-from src.cli.utils import format_output, print_success, print_error
+from cli.config import Config
+from cli.errors import CLIError, ValidationError, ConfigurationError
+from cli.utils import format_output, print_success, print_error
 
 
 def test_config_defaults():

@@ -8,7 +8,9 @@ from translator.ast_nodes import Identifier, Literal, BinaryOp, FunctionCall
 
 PRECEDENCE = {
     "OR": 1, "AND": 2,
-    "=": 3, "<": 3, ">": 3, "<=": 3, ">=": 3, "<>":3, "!=":3,
+    "=": 3, "<": 3, ">": 3, "<=": 3, ">=": 3, "<>":3, "!=":3, "==": 3,
+    "||": 3,  # String concatenation operator
+    "|": 3,   # Pipe operator (bitwise OR)
     "+": 4, "-": 4,
     "*": 5, "/": 5
 }
@@ -34,7 +36,7 @@ class Parser:
         while True:
             ttype, tval = self.peek()
             if ttype == "OP" or (ttype=="IDENT" and tval.upper() in ("AND","OR")):
-                op = tval.upper()
+                op = tval.upper() if ttype == "IDENT" else tval
                 op_prec = PRECEDENCE.get(op)
                 if op_prec and op_prec > prec:
                     self.advance()
@@ -61,6 +63,10 @@ class Parser:
             expr = self.parse_expr()
             self.advance()
             return expr
+        if ttype == "OP":
+            # Operators should be handled in parse_expr, not here
+            # This is a fallback for unexpected operator positions
+            raise ValueError(f"Unexpected operator in primary expression: {tval}")
         raise ValueError(f"Unexpected token in primary: {tval}")
 
     def parse_func(self, name):

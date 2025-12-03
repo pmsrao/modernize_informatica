@@ -2,7 +2,7 @@
 import os
 from typing import Optional
 from pydantic_settings import BaseSettings
-from src.utils.exceptions import ConfigurationError
+from utils.exceptions import ConfigurationError
 
 
 class Settings(BaseSettings):

@@ -1,14 +1,35 @@
-# Canonical Model Enhancements Validation Script
+# Canonical Model Validation Script
 
 ## Overview
 
-The validation script (`scripts/validate_canonical_model_enhancements.py`) verifies that all new canonical model enhancements are working correctly after running the test flow.
+The validation script (`scripts/validate_canonical_model.py`) validates canonical models for completeness and correctness. It can also validate enhancements in Neo4j when the `--enhancements` flag is used.
 
 ## Usage
 
+### Basic Validation
+
 ```bash
-# Run validation after test flow completes
-python scripts/validate_canonical_model_enhancements.py
+# Validate canonical models (structure, connectors, expressions, etc.)
+python scripts/validate_canonical_model.py
+
+# Validate specific directory
+python scripts/validate_canonical_model.py --path workspace/parsed
+
+# Verbose output
+python scripts/validate_canonical_model.py --verbose
+
+# JSON output
+python scripts/validate_canonical_model.py --json
+```
+
+### Enhancement Validation
+
+```bash
+# Validate canonical models AND Neo4j enhancements
+python scripts/validate_canonical_model.py --enhancements
+
+# Combine with other options
+python scripts/validate_canonical_model.py --enhancements --verbose --json
 ```
 
 ## What It Validates
@@ -149,6 +170,10 @@ Run the validation script:
 The script exits with code 1 if there are errors, making it suitable for CI/CD:
 
 ```bash
-python scripts/validate_canonical_model_enhancements.py || exit 1
+# Basic validation
+python scripts/validate_canonical_model.py || exit 1
+
+# With enhancements
+python scripts/validate_canonical_model.py --enhancements || exit 1
 ```
 

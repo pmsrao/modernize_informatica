@@ -171,13 +171,25 @@ class MappingParser:
         sqs = []
         for sq in self.root.findall(".//TRANSFORMATION[@TYPE='Source Qualifier']"):
             ports = self._parse_ports(sq)
+            sq_name = sq.get("NAME", "")
+            # If NAME is empty, try to derive from source name or use default
+            if not sq_name:
+                # Try to find associated source
+                source_name = sq.get("SOURCE", "") or get_text(sq, "SOURCE")
+                if source_name:
+                    sq_name = f"SQ_{source_name}"
+                else:
+                    sq_name = f"SQ_{len(sqs) + 1}"
+                logger.warning(f"Source Qualifier missing NAME attribute, using: {sq_name}")
+            
             sqs.append({
                 "type": "SOURCE_QUALIFIER",
-                "name": sq.get("NAME", ""),
+                "name": sq_name,
                 "ports": ports,
                 "sql_query": get_text(sq, "SQLQUERY"),
                 "filter": get_text(sq, "FILTER")
             })
+            logger.debug(f"Parsed Source Qualifier: {sq_name}")
         return sqs
     
     def _parse_expression(self) -> List[Dict[str, Any]]:

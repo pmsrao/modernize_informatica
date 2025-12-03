@@ -18,20 +18,20 @@ from .models import (
     ErrorResponse
 )
 from .file_manager import file_manager
-from src.parser import MappingParser, WorkflowParser, SessionParser, WorkletParser, MappletParser
-from src.normalizer import MappingNormalizer
-from src.generators import (
+from parser import MappingParser, WorkflowParser, SessionParser, WorkletParser, MappletParser
+from normalizer import MappingNormalizer
+from generators import (
     PySparkGenerator, DLTGenerator, SQLGenerator, SpecGenerator,
     OrchestrationGenerator, CodeQualityChecker
 )
-from src.dag import DAGBuilder, DAGVisualizer
-from src.versioning.version_store import VersionStore
-from src.config import settings
-from src.utils.exceptions import (
+from dag import DAGBuilder, DAGVisualizer
+from versioning.version_store import VersionStore
+from config import settings
+from utils.exceptions import (
     ParsingError, TranslationError, GenerationError, ValidationError,
     ModernizationError
 )
-from src.utils.logger import get_logger
+from utils.logger import get_logger
 
 # Import ai_agents with fallback for path issues
 try:
@@ -64,12 +64,12 @@ wave_planner = None
 report_generator = None
 if settings.enable_graph_store:
     try:
-        from src.graph.graph_store import GraphStore
-        from src.graph.graph_queries import GraphQueries
-        from src.assessment.profiler import Profiler
-        from src.assessment.analyzer import Analyzer
-        from src.assessment.wave_planner import WavePlanner
-        from src.assessment.report_generator import ReportGenerator
+        from graph.graph_store import GraphStore
+        from graph.graph_queries import GraphQueries
+        from assessment.profiler import Profiler
+        from assessment.analyzer import Analyzer
+        from assessment.wave_planner import WavePlanner
+        from assessment.report_generator import ReportGenerator
         
         graph_store = GraphStore(
             uri=settings.neo4j_uri,
@@ -296,7 +296,7 @@ async def get_hierarchy(file_ids: Optional[str] = None):
         Hierarchy graph with nodes and edges
     """
     try:
-        from src.api.hierarchy_builder import HierarchyBuilder
+        from api.hierarchy_builder import HierarchyBuilder
         
         builder = HierarchyBuilder()
         
@@ -2978,7 +2978,7 @@ async def generate_tests(request: Dict[str, Any]):
         Generated test code
     """
     try:
-        from src.generators.test_generator import TestGenerator
+        from generators.test_generator import TestGenerator
         
         mapping_name = request.get('mapping_name')
         code_type = request.get('code_type', 'pyspark')
@@ -3035,7 +3035,7 @@ async def validate_test_data(request: Dict[str, Any]):
         Validation results
     """
     try:
-        from src.validation.test_data_validator import TestDataValidator
+        from validation.test_data_validator import TestDataValidator
         
         canonical_model = request.get('canonical_model', {})
         test_data = request.get('test_data', [])
@@ -3079,7 +3079,7 @@ async def run_integration_tests(request: Dict[str, Any]):
         Test results
     """
     try:
-        from src.testing.integration_test_framework import IntegrationTestFramework
+        from testing.integration_test_framework import IntegrationTestFramework
         
         test_suite = request.get('test_suite', {})
         test_config = request.get('test_config', {})

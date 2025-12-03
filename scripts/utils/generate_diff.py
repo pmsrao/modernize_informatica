@@ -27,8 +27,8 @@ if str(project_root / "src") not in sys.path:
 class DiffGenerator:
     """Generate HTML diff reports for parsed vs enhanced models and code."""
     
-    def __init__(self, test_log_dir: str = "test_log"):
-        self.test_log_dir = test_log_dir
+    def __init__(self, workspace_dir: str = "workspace"):
+        self.workspace_dir = workspace_dir
         # generate_diff.py is in scripts/utils/, so we need to go up 2 levels to get to project root
         self.project_root = Path(__file__).parent.parent.parent
         
@@ -297,14 +297,14 @@ class DiffGenerator:
         Returns:
             List of diff results
         """
-        parsed_dir = os.path.join(self.project_root, self.test_log_dir, "parsed")
-        enhanced_dir = os.path.join(self.project_root, self.test_log_dir, "parse_ai")
+        parsed_dir = os.path.join(self.project_root, self.workspace_dir, "parsed")
+        enhanced_dir = os.path.join(self.project_root, self.workspace_dir, "parse_ai")
         
         # Debug: Show paths being used
         print(f"   🔍 Looking in parsed_dir: {parsed_dir}")
         print(f"   🔍 Looking in enhanced_dir: {enhanced_dir}")
         print(f"   🔍 Project root: {self.project_root}")
-        print(f"   🔍 Test log dir: {self.test_log_dir}")
+        print(f"   🔍 Workspace dir: {self.workspace_dir}")
         
         # Debug: Check if directories exist
         if not os.path.exists(parsed_dir):
@@ -652,8 +652,8 @@ class DiffGenerator:
         Returns:
             List of diff results
         """
-        generated_dir = os.path.join(self.project_root, self.test_log_dir, "generated")
-        reviewed_dir = os.path.join(self.project_root, self.test_log_dir, "generated_ai")
+        generated_dir = os.path.join(self.project_root, self.workspace_dir, "generated")
+        reviewed_dir = os.path.join(self.project_root, self.workspace_dir, "generated_ai")
         
         diffs = []
         
@@ -829,12 +829,12 @@ class DiffGenerator:
 
 def main():
     parser = argparse.ArgumentParser(description="Generate HTML diff reports for parsed vs enhanced models and code")
-    parser.add_argument("--test-log-dir", default="test_log", help="Test log directory")
+    parser.add_argument("--workspace-dir", default="workspace", help="Workspace directory")
     parser.add_argument("--output-dir", default="test_log/diffs", help="Output directory for diff reports")
     
     args = parser.parse_args()
     
-    generator = DiffGenerator(test_log_dir=args.test_log_dir)
+    generator = DiffGenerator(workspace_dir=args.workspace_dir)
     generator.generate_all_diffs(args.output_dir)
 
 

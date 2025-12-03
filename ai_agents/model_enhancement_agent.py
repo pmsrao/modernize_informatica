@@ -11,9 +11,9 @@ project_root = Path(__file__).parent.parent
 if str(project_root / "src") not in sys.path:
     sys.path.insert(0, str(project_root / "src"))
 
-from src.llm.llm_manager import LLMManager
-from src.utils.logger import get_logger
-from src.utils.exceptions import ModernizationError
+from llm.llm_manager import LLMManager
+from utils.logger import get_logger
+from utils.exceptions import ModernizationError
 
 logger = get_logger(__name__)
 

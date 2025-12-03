@@ -12,11 +12,11 @@ if str(project_root) not in sys.path:
 if str(project_root / "src") not in sys.path:
     sys.path.insert(0, str(project_root / "src"))
 
-from src.reconciliation.data_comparator import DataComparator
-from src.reconciliation.report_generator import ReconciliationReportGenerator
-from src.utils.logger import get_logger
-from src.graph.graph_store import GraphStore
-from src.graph.graph_queries import GraphQueries
+from reconciliation.data_comparator import DataComparator
+from reconciliation.report_generator import ReconciliationReportGenerator
+from utils.logger import get_logger
+from graph.graph_store import GraphStore
+from graph.graph_queries import GraphQueries
 
 logger = get_logger(__name__)
 

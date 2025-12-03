@@ -33,10 +33,17 @@ if str(project_root / "src") not in sys.path:
     sys.path.insert(0, str(project_root / "src"))
 
 try:
-    from src.graph.graph_store import GraphStore
-    from src.graph.graph_queries import GraphQueries
-    from src.utils.logger import get_logger
+    from graph.graph_store import GraphStore
+    from graph.graph_queries import GraphQueries
+    from utils.logger import get_logger
     from config import settings
+    # Import canonical model validator
+    try:
+        from scripts.validate_canonical_model import CanonicalModelValidator
+        CANONICAL_VALIDATOR_AVAILABLE = True
+    except ImportError:
+        CANONICAL_VALIDATOR_AVAILABLE = False
+        CanonicalModelValidator = None
 except ImportError as e:
     print(f"Error importing modules: {e}")
     print("Make sure you're running from the project root and dependencies are installed.")
@@ -48,17 +55,21 @@ logger = get_logger(__name__)
 class CodeValidator:
     """Validates generated code files."""
     
-    def __init__(self, strict: bool = False, verbose: bool = False):
+    def __init__(self, strict: bool = False, verbose: bool = False, validate_canonical: bool = True):
         """Initialize validator.
         
         Args:
             strict: If True, fail on warnings as well as errors
             verbose: If True, print detailed validation information
+            validate_canonical: If True, also validate canonical models
         """
         self.strict = strict
         self.verbose = verbose
+        self.validate_canonical = validate_canonical and CANONICAL_VALIDATOR_AVAILABLE
         self.errors = []
         self.warnings = []
+        self.canonical_errors = []
+        self.canonical_warnings = []
         self.stats = {
             'total_transformations': 0,
             'transformations_with_code': 0,
@@ -68,8 +79,74 @@ class CodeValidator:
             'invalid_code_files': 0,
             'syntax_errors': 0,
             'missing_imports': 0,
-            'missing_functions': 0
+            'missing_functions': 0,
+            'canonical_models_validated': 0,
+            'canonical_models_invalid': 0
         }
+    
+    def validate_transformation_completeness(self, transformation_name: str, code_content: str, model: Dict[str, Any]) -> List[str]:
+        """Validate that all transformations are represented in generated code.
+        
+        Args:
+            transformation_name: Name of the transformation
+            code_content: Generated code content
+            model: Canonical model
+            
+        Returns:
+            List of errors found
+        """
+        errors = []
+        transformations = model.get("transformations", [])
+        
+        # Check that key transformations are mentioned in code
+        for trans in transformations:
+            trans_name = trans.get("name", "")
+            trans_type = trans.get("type", "")
+            
+            # Skip sources and targets (they're handled differently)
+            if trans_type in ["SOURCE", "TARGET"]:
+                continue
+            
+            # Check if transformation name appears in code (as variable, comment, or function)
+            if trans_name and trans_name not in code_content:
+                # Allow some flexibility - check if similar name exists
+                similar_names = [name for name in code_content.split() if trans_name.lower() in name.lower() or name.lower() in trans_name.lower()]
+                if not similar_names:
+                    errors.append(f"Transformation '{trans_name}' (type: {trans_type}) not found in generated code")
+        
+        return errors
+    
+    def validate_connector_completeness(self, transformation_name: str, code_content: str, model: Dict[str, Any]) -> List[str]:
+        """Validate that connectors are represented in code.
+        
+        Args:
+            transformation_name: Name of the transformation
+            code_content: Generated code content
+            model: Canonical model
+            
+        Returns:
+            List of errors found
+        """
+        errors = []
+        connectors = model.get("connectors", [])
+        
+        # Check that connectors are represented (as joins, selects, etc.)
+        # This is a basic check - more sophisticated analysis would parse the code AST
+        for conn in connectors:
+            from_trans = conn.get("from_transformation", "")
+            to_trans = conn.get("to_transformation", "")
+            
+            # Skip OUTPUT/INPUT connectors (handled specially)
+            if to_trans == "OUTPUT" or from_trans == "INPUT":
+                continue
+            
+            # Check if both transformations are mentioned in code
+            if from_trans and from_trans not in code_content:
+                errors.append(f"Source transformation '{from_trans}' from connector not found in code")
+            if to_trans and to_trans not in code_content:
+                errors.append(f"Target transformation '{to_trans}' from connector not found in code")
+        
+        return errors
     
     def validate_all(self) -> Dict[str, Any]:
         """Run all validation checks.
@@ -79,8 +156,9 @@ class CodeValidator:
         """
         logger.info("Starting code validation...")
         
-        # Initialize graph store
-        graph_store = GraphStore()
+        # Initialize graph store (store as instance variable for completeness checks)
+        self.graph_store = GraphStore()
+        graph_store = self.graph_store
         graph_queries = GraphQueries(graph_store)
         
         try:
@@ -103,14 +181,24 @@ class CodeValidator:
             for transformation_name in transformations:
                 self._validate_transformation(transformation_name, graph_queries)
             
+            # Validate canonical models if enabled
+            if self.validate_canonical:
+                self._validate_canonical_models(graph_store, transformations)
+            
             # Generate summary
             summary = self._generate_summary()
             
+            # Combine errors and warnings
+            all_errors = self.errors + self.canonical_errors
+            all_warnings = self.warnings + self.canonical_warnings
+            
             return {
-                'success': len(self.errors) == 0 and (not self.strict or len(self.warnings) == 0),
+                'success': len(all_errors) == 0 and (not self.strict or len(all_warnings) == 0),
                 'stats': self.stats,
-                'errors': self.errors,
-                'warnings': self.warnings,
+                'errors': all_errors,
+                'warnings': all_warnings,
+                'canonical_errors': self.canonical_errors,
+                'canonical_warnings': self.canonical_warnings,
                 'summary': summary
             }
         
@@ -183,8 +271,8 @@ class CodeValidator:
             # Try alternative paths - check both generated and generated_ai directories
             # Also try to find file by name if path doesn't match exactly
             alt_paths = [
-                project_root / "test_log" / "generated_ai" / file_path,
-                project_root / "test_log" / "generated" / file_path,
+                project_root / "workspace" / "generated_ai" / file_path,
+                project_root / "workspace" / "generated" / file_path,
                 project_root / file_path
             ]
             
@@ -192,14 +280,14 @@ class CodeValidator:
             if not Path(file_path).is_absolute():
                 filename = Path(file_path).name
                 # Search in generated_ai directory structure
-                generated_ai_dir = project_root / "test_log" / "generated_ai"
+                generated_ai_dir = project_root / "workspace" / "generated_ai"
                 if generated_ai_dir.exists():
                     for alt_file in generated_ai_dir.rglob(filename):
                         if alt_file.is_file():
                             alt_paths.append(alt_file)
                             break
                 # Also search in generated directory
-                generated_dir = project_root / "test_log" / "generated"
+                generated_dir = project_root / "workspace" / "generated"
                 if generated_dir.exists():
                     for alt_file in generated_dir.rglob(filename):
                         if alt_file.is_file():
@@ -218,12 +306,12 @@ class CodeValidator:
             if not found:
                 self.stats['invalid_code_files'] += 1
                 # Check if file exists in generated_ai but path points to generated
-                generated_ai_dir = project_root / "test_log" / "generated_ai"
-                generated_dir = project_root / "test_log" / "generated"
+                generated_ai_dir = project_root / "workspace" / "generated_ai"
+                generated_dir = project_root / "workspace" / "generated"
                 
                 # Try to find file in generated_ai with same relative structure
-                if generated_ai_dir.exists() and file_path.startswith("test_log/generated/"):
-                    ai_path = file_path.replace("test_log/generated/", "test_log/generated_ai/")
+                if generated_ai_dir.exists() and file_path.startswith("workspace/generated/"):
+                    ai_path = file_path.replace("workspace/generated/", "workspace/generated_ai/")
                     ai_full_path = project_root / ai_path
                     if ai_full_path.exists():
                         full_path = ai_full_path
@@ -266,6 +354,33 @@ class CodeValidator:
             self._validate_python_code(content, file_path, transformation_name)
         elif language == 'sql' or code_type == 'sql':
             self._validate_sql_code(content, file_path, transformation_name)
+        
+        # Validate completeness (check transformations and connectors are represented)
+        try:
+            model = graph_store.load_transformation(transformation_name)
+            if model:
+                # Check transformation completeness
+                trans_errors = self.validate_transformation_completeness(transformation_name, content, model)
+                for error in trans_errors:
+                    self.warnings.append({
+                        'type': 'transformation_missing',
+                        'transformation': transformation_name,
+                        'file_path': file_path,
+                        'message': error
+                    })
+                
+                # Check connector completeness
+                conn_errors = self.validate_connector_completeness(transformation_name, content, model)
+                for error in conn_errors:
+                    self.warnings.append({
+                        'type': 'connector_missing',
+                        'transformation': transformation_name,
+                        'file_path': file_path,
+                        'message': error
+                    })
+        except Exception as e:
+            if self.verbose:
+                logger.debug(f"Could not load model for completeness check: {e}")
         
         self.stats['valid_code_files'] += 1
     
@@ -354,6 +469,58 @@ class CodeValidator:
                 'message': 'SQL file is empty'
             })
     
+    def _validate_canonical_models(self, graph_store: GraphStore, transformation_names: List[str]):
+        """Validate canonical models for transformations.
+        
+        Args:
+            graph_store: GraphStore instance
+            transformation_names: List of transformation names to validate
+        """
+        if not self.validate_canonical or not CanonicalModelValidator:
+            return
+        
+        logger.info("Validating canonical models...")
+        canonical_validator = CanonicalModelValidator(strict=self.strict, verbose=self.verbose)
+        
+        # Load canonical models from version store or graph
+        from versioning.version_store import VersionStore
+        version_store = VersionStore(path=settings.version_store_path)
+        
+        for transformation_name in transformation_names:
+            try:
+                # Try to load from version store
+                model = version_store.load(transformation_name)
+                
+                if not model:
+                    # Try loading from graph
+                    try:
+                        model = graph_store.load_transformation(transformation_name)
+                    except Exception:
+                        pass
+                
+                if model:
+                    self.stats['canonical_models_validated'] += 1
+                    result = canonical_validator.validate_model(model, transformation_name)
+                    
+                    if not result['valid']:
+                        self.stats['canonical_models_invalid'] += 1
+                        self.canonical_errors.extend(result['errors'])
+                    
+                    if result['warnings']:
+                        self.canonical_warnings.extend(result['warnings'])
+                else:
+                    self.warnings.append({
+                        'type': 'canonical_model_not_found',
+                        'transformation': transformation_name,
+                        'message': f'Canonical model not found for {transformation_name}'
+                    })
+            except Exception as e:
+                self.warnings.append({
+                    'type': 'canonical_validation_error',
+                    'transformation': transformation_name,
+                    'message': f'Failed to validate canonical model: {str(e)}'
+                })
+    
     def _generate_summary(self) -> str:
         """Generate validation summary.
         
@@ -383,8 +550,19 @@ class CodeValidator:
         lines.append(f"  - Missing Imports: {self.stats['missing_imports']}")
         lines.append(f"  - Missing Functions: {self.stats['missing_functions']}")
         lines.append("")
-        lines.append(f"Errors: {len(self.errors)}")
-        lines.append(f"Warnings: {len(self.warnings)}")
+        if self.validate_canonical:
+            lines.append(f"Canonical Model Validation:")
+            lines.append(f"  - Models Validated: {self.stats['canonical_models_validated']}")
+            lines.append(f"  - Invalid Models: {self.stats['canonical_models_invalid']}")
+            lines.append("")
+        lines.append(f"Errors: {len(self.errors) + len(self.canonical_errors)}")
+        lines.append(f"  - Code Errors: {len(self.errors)}")
+        if self.validate_canonical:
+            lines.append(f"  - Canonical Model Errors: {len(self.canonical_errors)}")
+        lines.append(f"Warnings: {len(self.warnings) + len(self.canonical_warnings)}")
+        lines.append(f"  - Code Warnings: {len(self.warnings)}")
+        if self.validate_canonical:
+            lines.append(f"  - Canonical Model Warnings: {len(self.canonical_warnings)}")
         lines.append("")
         
         if self.errors:
@@ -418,10 +596,15 @@ def main():
     parser.add_argument('--strict', action='store_true', help='Treat warnings as errors')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
     parser.add_argument('--json', action='store_true', help='Output results as JSON')
+    parser.add_argument('--no-canonical', action='store_true', help='Skip canonical model validation')
     
     args = parser.parse_args()
     
-    validator = CodeValidator(strict=args.strict, verbose=args.verbose)
+    validator = CodeValidator(
+        strict=args.strict, 
+        verbose=args.verbose,
+        validate_canonical=not args.no_canonical
+    )
     results = validator.validate_all()
     
     if args.json:

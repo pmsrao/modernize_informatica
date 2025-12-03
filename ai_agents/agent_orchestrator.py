@@ -19,9 +19,9 @@ from ai_agents.mapping_reconstruction_agent import MappingReconstructionAgent
 from ai_agents.workflow_simulation_agent import WorkflowSimulationAgent
 from ai_agents.model_enhancement_agent import ModelEnhancementAgent
 from ai_agents.model_validation_agent import ModelValidationAgent
-from src.llm.llm_manager import LLMManager
-from src.utils.logger import get_logger
-from src.utils.exceptions import ModernizationError
+from llm.llm_manager import LLMManager
+from utils.logger import get_logger
+from utils.exceptions import ModernizationError
 
 logger = get_logger(__name__)
 

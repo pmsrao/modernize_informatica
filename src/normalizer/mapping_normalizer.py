@@ -67,7 +67,7 @@ class MappingNormalizer:
             
             # Calculate complexity metrics
             try:
-                from src.normalizer.complexity_calculator import ComplexityCalculator
+                from normalizer.complexity_calculator import ComplexityCalculator
                 complexity_calc = ComplexityCalculator()
                 complexity_metrics = complexity_calc.calculate({
                     "transformations": transformations,
@@ -81,7 +81,7 @@ class MappingNormalizer:
             
             # Detect semantic tags
             try:
-                from src.normalizer.semantic_tag_detector import SemanticTagDetector
+                from normalizer.semantic_tag_detector import SemanticTagDetector
                 tag_detector = SemanticTagDetector()
                 semantic_tags = tag_detector.detect_tags({
                     "transformations": transformations,

@@ -3,7 +3,7 @@
 Structures free-form configuration attributes into normalized runtime configuration schemas.
 """
 from typing import Dict, Any, List, Optional
-from src.utils.logger import get_logger
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 

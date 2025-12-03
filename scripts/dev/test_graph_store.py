@@ -10,9 +10,9 @@ if str(project_root) not in sys.path:
 if str(project_root / "src") not in sys.path:
     sys.path.insert(0, str(project_root / "src"))
 
-from src.graph.graph_store import GraphStore
-from src.config import settings
-from src.utils.logger import get_logger
+from graph.graph_store import GraphStore
+from config import settings
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 

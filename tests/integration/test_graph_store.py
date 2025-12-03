@@ -10,10 +10,10 @@ if str(project_root) not in sys.path:
 if str(project_root / "src") not in sys.path:
     sys.path.insert(0, str(project_root / "src"))
 
-from src.graph.graph_store import GraphStore
-from src.versioning.version_store import VersionStore
-from src.graph.graph_sync import GraphSync
-from src.config import settings
+from graph.graph_store import GraphStore
+from versioning.version_store import VersionStore
+from graph.graph_sync import GraphSync
+from config import settings
 
 
 @pytest.fixture(scope="module")

@@ -185,12 +185,12 @@ def test_all_endpoints():
     }
     
     # Save to file for frontend
-    os.makedirs("test_output", exist_ok=True)
-    with open("test_output/frontend_test_data.json", "w") as f:
+    os.makedirs("tests/output", exist_ok=True)
+    with open("tests/output/frontend_test_data.json", "w") as f:
         json.dump(test_data, f, indent=2)
     
     print("\n✅ All API tests passed!")
-    print(f"\n📁 Test data saved to: test_output/frontend_test_data.json")
+    print(f"\n📁 Test data saved to: tests/output/frontend_test_data.json")
     print(f"\n📋 Frontend Test Data:")
     print(f"   File ID: {workflow_file_id}")
     print(f"   Workflow: {test_data['workflow_name']}")
@@ -438,7 +438,7 @@ def create_frontend_test_page():
         // Load test data if available
         window.addEventListener('load', async () => {
             try {
-                const response = await fetch('test_output/frontend_test_data.json');
+                const response = await fetch('tests/output/frontend_test_data.json');
                 if (response.ok) {
                     const data = await response.json();
                     document.getElementById('fileIdInput').value = data.file_id;
@@ -453,11 +453,11 @@ def create_frontend_test_page():
 </html>
 """
     
-    os.makedirs("test_output", exist_ok=True)
-    with open("test_output/frontend_test.html", "w") as f:
+    os.makedirs("tests/output", exist_ok=True)
+    with open("tests/output/frontend_test.html", "w") as f:
         f.write(html_content)
     
-    print(f"\n📄 Frontend test page created: test_output/frontend_test.html")
+    print(f"\n📄 Frontend test page created: tests/output/frontend_test.html")
     print(f"   Open this file in a browser to test the frontend integration")
 
 
@@ -481,7 +481,7 @@ def main():
         print("\n✅ All API tests passed!")
         print("\n📋 Next Steps:")
         print("   1. Ensure API is running: uvicorn api.app:app --reload --port 8000")
-        print("   2. Open test_output/frontend_test.html in a browser")
+        print("   2. Open tests/output/frontend_test.html in a browser")
         print("   3. Or start the React frontend: cd frontend && npm run dev")
         print("   4. Use File ID from above to test lineage visualization")
         print(f"\n   Test File ID: {test_data['file_id']}")

@@ -78,7 +78,7 @@ OPENAI_MODEL=gpt-4o-mini
 
 # In another terminal, test the configuration
 python -c "
-from src.llm.llm_manager import LLMManager
+from llm.llm_manager import LLMManager
 llm = LLMManager()
 response = llm.ask('Say hello')
 print('✅ OpenAI configured correctly!')
@@ -150,7 +150,7 @@ AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini
 
 ```bash
 python -c "
-from src.llm.llm_manager import LLMManager
+from llm.llm_manager import LLMManager
 llm = LLMManager()
 response = llm.ask('Say hello')
 print('✅ Azure OpenAI configured correctly!')
@@ -231,7 +231,7 @@ USE_MOCK_LLM=false
 
 ```bash
 python -c "
-from src.llm.llm_manager import LLMManager
+from llm.llm_manager import LLMManager
 llm = LLMManager()
 response = llm.ask('Say hello')
 print('✅ Ollama/Llama3 configured correctly!')

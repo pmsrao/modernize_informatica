@@ -10,9 +10,9 @@ if str(project_root) not in sys.path:
 if str(project_root / "src") not in sys.path:
     sys.path.insert(0, str(project_root / "src"))
 
-from src.parser import WorkflowParser, WorkletParser, SessionParser, MappingParser
-from src.api.file_manager import file_manager
-from src.utils.logger import get_logger
+from parser import WorkflowParser, WorkletParser, SessionParser, MappingParser
+from api.file_manager import file_manager
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 

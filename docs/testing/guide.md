@@ -48,7 +48,7 @@ python scripts/test_samples.py
 
 **Generated Files:**
 
-1. **DAG Visualizations** (`test_output/`):
+1. **DAG Visualizations** (`tests/output/`):
    - `dag.dot` - Graphviz DOT format
    - `dag.json` - JSON format with complete structure
    - `dag.mermaid` - Mermaid diagram format
@@ -66,10 +66,10 @@ python scripts/test_samples.py
 **Check DAG Files:**
 ```bash
 # View JSON structure
-cat test_output/dag.json | python -m json.tool
+cat tests/output/dag.json | python -m json.tool
 
 # View DOT format
-cat test_output/dag.dot
+cat tests/output/dag.dot
 
 # View Mermaid format
 cat test_output/dag.mermaid

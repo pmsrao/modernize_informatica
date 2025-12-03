@@ -39,7 +39,6 @@ ENV/
 
 # Generated Code and Output
 generated_code/
-test_output/
 uploads/
 versions/
 
@@ -55,7 +54,8 @@ logs/
 # Testing
 .pytest_cache/
 .coverage
-htmlcov/
+tests/coverage/
+tests/output/
 .tox/
 .hypothesis/
 
@@ -82,7 +82,7 @@ Thumbs.db
 # Project specific
 *.drawio.bak
 
-# Test logs (but keep directory structure)
-test_log/*
-!test_log/.gitkeep
+# Workspace (test workflow outputs - but keep directory structure)
+workspace/*
+!workspace/.gitkeep
 

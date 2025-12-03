@@ -68,7 +68,7 @@ Errors are categorized into the following types:
 ### Basic Usage
 
 ```python
-from src.utils.error_categorizer import ErrorCategorizer
+from utils.error_categorizer import ErrorCategorizer
 
 categorizer = ErrorCategorizer()
 
@@ -109,7 +109,7 @@ print(f"Recoverable errors: {stats['recoverable']}")
 ### Automatic Retry
 
 ```python
-from src.utils.error_recovery import ErrorRecovery, retry_on_error
+from utils.error_recovery import ErrorRecovery, retry_on_error
 
 recovery = ErrorRecovery()
 
@@ -124,7 +124,7 @@ result = recovery.retry_with_backoff(
 ### Using Decorators
 
 ```python
-from src.utils.error_recovery import retry_on_error, skip_on_error
+from utils.error_recovery import retry_on_error, skip_on_error
 
 @retry_on_error(max_retries=3, delay=1.0, backoff=2.0)
 def risky_operation():
@@ -168,7 +168,7 @@ result = recovery.use_defaults_on_error(
 The logger automatically categorizes errors when logging:
 
 ```python
-from src.utils.logger import get_logger
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -278,8 +278,8 @@ stats = categorizer.get_error_statistics(errors)
 ### In Parsers
 
 ```python
-from src.utils.error_categorizer import ErrorCategorizer
-from src.utils.error_recovery import skip_on_error
+from utils.error_categorizer import ErrorCategorizer
+from utils.error_recovery import skip_on_error
 
 categorizer = ErrorCategorizer()
 
@@ -299,7 +299,7 @@ def parse_mapping(xml_file):
 ### In Code Generators
 
 ```python
-from src.utils.error_recovery import retry_on_error
+from utils.error_recovery import retry_on_error
 
 @retry_on_error(max_retries=3)
 def generate_code(canonical_model):

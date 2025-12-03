@@ -65,7 +65,7 @@ cp .env.example .env
 
 ```bash
 # Test connection
-python -c "from src.graph.graph_store import GraphStore; GraphStore()"
+python -c "from graph.graph_store import GraphStore; GraphStore()"
 ```
 
 ### 3. Run Tests

@@ -116,10 +116,10 @@ def test_dag_visualization(dag):
         
         # Export to files
         print("\n💾 Exporting visualizations to files...")
-        visualizer.export(dag, "dot", "test_output/dag")
-        visualizer.export(dag, "json", "test_output/dag")
-        visualizer.export(dag, "mermaid", "test_output/dag")
-        print("✅ Visualizations exported to test_output/ directory")
+        visualizer.export(dag, "dot", "tests/output/dag")
+        visualizer.export(dag, "json", "tests/output/dag")
+        visualizer.export(dag, "mermaid", "tests/output/dag")
+        print("✅ Visualizations exported to tests/output/ directory")
         
     except Exception as e:
         print(f"❌ Error visualizing DAG: {e}")
@@ -412,7 +412,7 @@ def process_all_sample_files():
                 
                 # Generate visualization for this workflow
                 workflow_name = data.get('name', 'unknown').lower().replace(" ", "_")
-                dag_dir = f"test_output/dags/{workflow_name}"
+                dag_dir = f"tests/output/dags/{workflow_name}"
                 os.makedirs(dag_dir, exist_ok=True)
                 
                 visualizer = DAGVisualizer()
@@ -472,8 +472,8 @@ def main():
     print("\nTesting with sample Informatica XML files...")
     
     # Create output directories
-    os.makedirs("test_output", exist_ok=True)
-    os.makedirs("test_output/dags", exist_ok=True)
+    os.makedirs("tests/output", exist_ok=True)
+    os.makedirs("tests/output/dags", exist_ok=True)
     os.makedirs("generated_code", exist_ok=True)
     
     # Process all sample files
@@ -520,8 +520,8 @@ def main():
     print("\n✅ All tests completed!")
     print("\n📁 Generated files:")
     print("\n  DAG Visualizations:")
-    print("    - test_output/dag.* (Main workflow)")
-    print("    - test_output/dags/<workflow_name>/dag.* (All workflows)")
+    print("    - tests/output/dag.* (Main workflow)")
+    print("    - tests/output/dags/<workflow_name>/dag.* (All workflows)")
     print("\n  Target Architecture Code (generated_code/):")
     if canonical_model:
         mapping_name = canonical_model.get("mapping_name", "unknown").lower().replace(" ", "_")

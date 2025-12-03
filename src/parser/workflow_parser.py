@@ -131,7 +131,7 @@ class WorkflowParser:
             
             if workflow_attributes:
                 try:
-                    from src.normalizer.runtime_config_normalizer import RuntimeConfigNormalizer
+                    from normalizer.runtime_config_normalizer import RuntimeConfigNormalizer
                     normalizer = RuntimeConfigNormalizer()
                     workflow_runtime_config = normalizer.normalize_workflow_config(workflow_attributes, tasks)
                     workflow["workflow_runtime_config"] = workflow_runtime_config

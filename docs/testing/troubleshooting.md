@@ -140,7 +140,7 @@ pip install -r requirements.txt
 python -c "import sys; print(sys.path)"
 
 # Verify imports
-python -c "from src.api import app"
+python -c "from api import app"
 ```
 
 ### Issue: File Upload Fails
@@ -233,7 +233,7 @@ CoverageWarning: No data was collected.
 ```bash
 # Clean generated files
 rm -rf generated_code/*
-rm -rf test_output/*
+rm -rf tests/output/*
 
 # Re-run tests
 python test_samples.py

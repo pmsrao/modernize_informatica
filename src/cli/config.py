@@ -17,8 +17,8 @@ try:
 except ImportError:
     yaml = None
 
-from src.cli.errors import ConfigurationError
-from src.utils.logger import get_logger
+from cli.errors import ConfigurationError
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 

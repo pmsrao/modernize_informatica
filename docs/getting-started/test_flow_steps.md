@@ -77,13 +77,13 @@ make upload
 ```
 
 **What it does:**
-- Copies XML files to `test_log/staging/`
+- Copies XML files to `workspace/staging/`
 - Optionally uploads to API (if running)
 - Creates `upload_results.json` with file IDs
 
 **Output:**
-- Files in `test_log/staging/`
-- `test_log/staging/upload_results.json`
+- Files in `workspace/staging/`
+- `workspace/staging/upload_results.json`
 
 ---
 
@@ -99,12 +99,12 @@ make parse
 - Parses all XML files in staging directory
 - Creates canonical models for transformations
 - Parses structure for pipelines, tasks, sub pipelines, reusable transformations
-- Saves parsed data to `test_log/parsed/`
+- Saves parsed data to `workspace/parsed/`
 - **If Neo4j enabled**: Saves components to Neo4j graph database
 
 **Output:**
-- `test_log/parsed/{transformation_name}.json` (canonical models)
-- `test_log/parsed/{component_name}_{type}.json` (other components)
+- `workspace/parsed/{transformation_name}.json` (canonical models)
+- `workspace/parsed/{component_name}_{type}.json` (other components)
 - Neo4j nodes and relationships (if graph store enabled)
 
 ---
@@ -118,13 +118,13 @@ make enhance
 ```
 
 **What it does:**
-- Loads parsed canonical models from `test_log/parsed/`
+- Loads parsed canonical models from `workspace/parsed/`
 - Enhances with AI (adds optimization hints, data quality rules, etc.)
-- Saves enhanced models to `test_log/parse_ai/`
+- Saves enhanced models to `workspace/parse_ai/`
 - **If Neo4j enabled**: Updates Neo4j with enhanced models
 
 **Output:**
-- `test_log/parse_ai/{transformation_name}.json` (enhanced canonical models)
+- `workspace/parse_ai/{transformation_name}.json` (enhanced canonical models)
 
 **Note**: Only transformations are enhanced. Pipelines, tasks, and sub pipelines are not enhanced.
 
@@ -372,7 +372,7 @@ test_log/
 
 3. Test connection:
    ```bash
-   python -c "from src.graph.graph_store import GraphStore; GraphStore()"
+   python -c "from graph.graph_store import GraphStore; GraphStore()"
    ```
 
 ### Schema Not Created

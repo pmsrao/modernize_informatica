@@ -290,8 +290,8 @@ npm start
 ```bash
 # Check if workflows are in Neo4j
 python -c "
-from src.graph.graph_store import GraphStore
-from src.graph.graph_queries import GraphQueries
+from graph.graph_store import GraphStore
+from graph.graph_queries import GraphQueries
 store = GraphStore()
 queries = GraphQueries(store)
 workflows = queries.list_workflows()

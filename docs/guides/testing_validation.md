@@ -17,7 +17,7 @@ The `TestDataValidator` provides comprehensive validation capabilities for testi
 Validate transformation logic against test data:
 
 ```python
-from src.validation.test_data_validator import TestDataValidator
+from validation.test_data_validator import TestDataValidator
 
 validator = TestDataValidator()
 
@@ -93,7 +93,7 @@ The `TestGenerator` automatically generates pytest-compatible tests for generate
 #### Generate PySpark Tests
 
 ```python
-from src.generators.test_generator import TestGenerator
+from generators.test_generator import TestGenerator
 
 test_generator = TestGenerator()
 
@@ -181,7 +181,7 @@ class TestMappingName:
 Run comprehensive integration test suites:
 
 ```python
-from src.testing.integration_test_framework import IntegrationTestFramework
+from testing.integration_test_framework import IntegrationTestFramework
 
 framework = IntegrationTestFramework(test_config={
     'report_format': 'html'  # or 'json'

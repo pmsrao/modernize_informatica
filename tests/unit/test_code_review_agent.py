@@ -11,7 +11,7 @@ if str(project_root / "src") not in sys.path:
     sys.path.insert(0, str(project_root / "src"))
 
 from ai_agents.code_review_agent import CodeReviewAgent
-from src.utils.exceptions import ModernizationError
+from utils.exceptions import ModernizationError
 
 
 @pytest.fixture

@@ -10,12 +10,12 @@ if str(project_root) not in sys.path:
 if str(project_root / "src") not in sys.path:
     sys.path.insert(0, str(project_root / "src"))
 
-from src.graph.graph_store import GraphStore
-from src.versioning.version_store import VersionStore
-from src.normalizer.mapping_normalizer import MappingNormalizer
-from src.generators.pyspark_generator import PySparkGenerator
-from src.config import settings
-from src.utils.logger import get_logger
+from graph.graph_store import GraphStore
+from versioning.version_store import VersionStore
+from normalizer.mapping_normalizer import MappingNormalizer
+from generators.pyspark_generator import PySparkGenerator
+from config import settings
+from utils.logger import get_logger
 from ai_agents.agent_orchestrator import AgentOrchestrator
 
 logger = get_logger(__name__)

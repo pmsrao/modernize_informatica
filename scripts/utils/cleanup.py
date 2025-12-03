@@ -12,8 +12,8 @@ if str(project_root / "src") not in sys.path:
 
 import argparse
 from typing import Optional
-from src.config import settings
-from src.utils.logger import get_logger
+from config import settings
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -30,7 +30,7 @@ def cleanup_neo4j(confirm: bool = False, component_type: Optional[str] = None):
         return False
     
     try:
-        from src.graph.graph_store import GraphStore
+        from graph.graph_store import GraphStore
         
         graph_store = GraphStore(
             uri=settings.neo4j_uri,
@@ -174,7 +174,7 @@ def cleanup_files(confirm: bool = False):
     
     # Also clear the file manager registry if API is running
     try:
-        from src.api.file_manager import file_manager
+        from api.file_manager import file_manager
         file_manager.clear_registry()
         print("   ✅ Cleared file manager registry")
     except Exception as e:
@@ -223,7 +223,7 @@ def cleanup_version_store(confirm: bool = False):
 def cleanup_assessment_reports(confirm: bool = False):
     """Clean up assessment report files."""
     project_root = Path(__file__).parent.parent
-    assessment_dir = project_root / "test_log" / "assessment"
+    assessment_dir = project_root / "workspace" / "assessment"
     
     if not assessment_dir.exists():
         print(f"ℹ️  Assessment directory does not exist: {assessment_dir}")

@@ -12,20 +12,20 @@ if str(project_root) not in sys.path:
 if str(project_root / "src") not in sys.path:
     sys.path.insert(0, str(project_root / "src"))
 
-from src.cli.config import Config
-from src.cli.errors import CLIError, ConfigurationError, GraphStoreError
-from src.cli.utils import (
+from cli.config import Config
+from cli.errors import CLIError, ConfigurationError, GraphStoreError
+from cli.utils import (
     ProgressIndicator, format_output, print_success, print_error, 
     print_warning, print_info
 )
-from src.graph.graph_store import GraphStore
-from src.assessment.profiler import Profiler
-from src.assessment.analyzer import Analyzer
-from src.assessment.wave_planner import WavePlanner
-from src.assessment.report_generator import ReportGenerator
-from src.assessment.tco_calculator import TCOCalculator
-from src.reconciliation.recon_engine import ReconciliationEngine
-from src.utils.logger import get_logger
+from graph.graph_store import GraphStore
+from assessment.profiler import Profiler
+from assessment.analyzer import Analyzer
+from assessment.wave_planner import WavePlanner
+from assessment.report_generator import ReportGenerator
+from assessment.tco_calculator import TCOCalculator
+from reconciliation.recon_engine import ReconciliationEngine
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 

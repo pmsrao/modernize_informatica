@@ -145,8 +145,8 @@ Simple test files in `samples/simple/` provide basic validation:
 
 | Location | Description |
 |----------|-------------|
-| `test_output/dag.*` | Main DAG visualizations |
-| `test_output/dags/<workflow_name>/` | Per-workflow DAG visualizations |
+| `tests/output/dag.*` | Main DAG visualizations |
+| `tests/output/dags/<workflow_name>/` | Per-workflow DAG visualizations |
 | `generated_code/<mapping_name>/` | All generated code and tests |
 
 ### Generated Code Files

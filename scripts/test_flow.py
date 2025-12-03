@@ -30,7 +30,7 @@ if str(project_root / "src") not in sys.path:
     sys.path.insert(0, str(project_root / "src"))
 
 try:
-    from src.api.file_manager import file_manager
+    from api.file_manager import file_manager
     from parser import MappingParser, WorkflowParser, SessionParser, WorkletParser, MappletParser
     from normalizer import MappingNormalizer
     from generators import PySparkGenerator, DLTGenerator, SQLGenerator
@@ -38,11 +38,11 @@ try:
     from versioning.version_store import VersionStore
     from graph.graph_store import GraphStore
     from graph.graph_queries import GraphQueries
-    from src.assessment.profiler import Profiler
-    from src.assessment.analyzer import Analyzer
-    from src.assessment.wave_planner import WavePlanner
-    from src.assessment.report_generator import ReportGenerator
-    from src.utils.logger import get_logger
+    from assessment.profiler import Profiler
+    from assessment.analyzer import Analyzer
+    from assessment.wave_planner import WavePlanner
+    from assessment.report_generator import ReportGenerator
+    from utils.logger import get_logger
     from config import settings
     
     logger = get_logger(__name__)
@@ -248,7 +248,7 @@ class TestFlow:
                             # Save with both the mapplet name and with _mapplet suffix for lookup
                             version_store.save(mapplet_name, mapplet_data)
                             # Also save enhanced version if it exists
-                            # Derive base_dir from output_dir (output_dir is typically test_log/parsed)
+                            # Derive base_dir from output_dir (output_dir is typically workspace/parsed)
                             base_dir = os.path.dirname(output_dir) if os.path.dirname(output_dir) else output_dir
                             parse_ai_dir = os.path.join(base_dir, "parse_ai")
                             enhanced_file = os.path.join(parse_ai_dir, f"{mapplet_name}_mapplet_enhanced.json")
@@ -946,7 +946,7 @@ class TestFlow:
         
         Args:
             output_dir: Directory to save lineage diagrams
-            staging_dir: Directory with uploaded files (default: test_log/staging)
+            staging_dir: Directory with uploaded files (default: workspace/staging)
             
         Returns:
             Dictionary with lineage results
@@ -958,7 +958,7 @@ class TestFlow:
         os.makedirs(output_dir, exist_ok=True)
         
         if staging_dir is None:
-            staging_dir = "test_log/staging"
+            staging_dir = "workspace/staging"
         
         try:
             # Find workflow files
@@ -1042,9 +1042,9 @@ class TestFlow:
         # Resolve paths relative to project root
         project_root = Path(__file__).parent.parent
         
-        # Handle both test_log/diagrams and test_log cases
+        # Handle both workspace/diagrams and workspace cases
         if "diagrams" in output_dir:
-            # If output_dir is test_log/diagrams, get test_log base
+            # If output_dir is workspace/diagrams, get workspace base
             base_dir = os.path.dirname(output_dir)
             if not os.path.isabs(base_dir):
                 base_dir = os.path.join(project_root, base_dir)
@@ -1325,8 +1325,8 @@ class TestFlow:
                                 if transformation_name.startswith("MPL_") or "_mapplet" in transformation_name.lower():
                                     print(f"      🔍 Debug: Trying mapplet-specific file names")
                                     project_root = Path(__file__).parent.parent
-                                    parse_ai_dir = os.path.join(project_root, "test_log", "parse_ai")
-                                    parsed_dir = os.path.join(project_root, "test_log", "parsed")
+                                    parse_ai_dir = os.path.join(project_root, "workspace", "parse_ai")
+                                    parsed_dir = os.path.join(project_root, "workspace", "parsed")
                                     mapplet_files = [
                                         os.path.join(parse_ai_dir, f"{transformation_name}_mapplet_enhanced.json"),
                                         os.path.join(parse_ai_dir, f"{transformation_name}_enhanced.json"),
@@ -1518,8 +1518,8 @@ class TestFlow:
         """
         # Find enhanced or parsed models
         project_root = Path(__file__).parent.parent
-        parse_ai_dir = os.path.join(project_root, "test_log", "parse_ai")
-        parsed_dir = os.path.join(project_root, "test_log", "parsed")
+        parse_ai_dir = os.path.join(project_root, "workspace", "parse_ai")
+        parsed_dir = os.path.join(project_root, "workspace", "parsed")
         
         model_files = []
         for dir_path in [parse_ai_dir, parsed_dir]:
@@ -1725,8 +1725,8 @@ class TestFlow:
             Canonical model dict or None
         """
         project_root = Path(__file__).parent.parent
-        parse_ai_dir = os.path.join(project_root, "test_log", "parse_ai")
-        parsed_dir = os.path.join(project_root, "test_log", "parsed")
+        parse_ai_dir = os.path.join(project_root, "workspace", "parse_ai")
+        parsed_dir = os.path.join(project_root, "workspace", "parsed")
         
         print(f"      🔍 Debug: Searching for mapping '{mapping_name}' in:")
         print(f"         - {parse_ai_dir}")
@@ -1983,7 +1983,7 @@ class TestFlow:
             List of workflow structures
         """
         project_root = Path(__file__).parent.parent
-        parsed_dir = os.path.join(project_root, "test_log", "parsed")
+        parsed_dir = os.path.join(project_root, "workspace", "parsed")
         
         workflows = []
         
@@ -2603,10 +2603,10 @@ def main():
     parser.add_argument("command", choices=["upload", "parse", "enhance", "hierarchy", "lineage", "canonical", "code", "review", "assess"],
                        help="Command to execute")
     parser.add_argument("--files", help="File paths or glob patterns (for upload)")
-    parser.add_argument("--staging-dir", default="test_log/staging", help="Staging directory")
-    parser.add_argument("--parsed-dir", default="test_log/parsed", help="Parsed models directory")
-    parser.add_argument("--output-dir", default="test_log", help="Output directory")
-    parser.add_argument("--generated-dir", default="test_log/generated", help="Generated code directory")
+    parser.add_argument("--staging-dir", default="workspace/staging", help="Staging directory")
+    parser.add_argument("--parsed-dir", default="workspace/parsed", help="Parsed models directory")
+    parser.add_argument("--output-dir", default="workspace", help="Output directory")
+    parser.add_argument("--generated-dir", default="workspace/generated", help="Generated code directory")
     parser.add_argument("--api-url", default="http://localhost:8000", help="API URL")
     parser.add_argument("--no-api", action="store_true", help="Don't use API, use direct Python calls")
     
@@ -2625,7 +2625,7 @@ def main():
         flow.parse_mappings(args.staging_dir, args.parsed_dir)
     
     elif args.command == "enhance":
-        # Use output_dir directly (Makefile already sets it to test_log/parse_ai)
+        # Use output_dir directly (Makefile already sets it to workspace/parse_ai)
         flow.enhance_with_ai(args.parsed_dir, args.output_dir)
     
     elif args.command == "hierarchy":
@@ -2638,11 +2638,11 @@ def main():
         flow.generate_canonical_images(args.output_dir)
     
     elif args.command == "code":
-        # output_dir should already be test_log/generated from Makefile
+        # output_dir should already be workspace/generated from Makefile
         flow.generate_code(args.output_dir)
     
     elif args.command == "review":
-        # Use output_dir directly (Makefile already sets it to test_log/generated_ai)
+        # Use output_dir directly (Makefile already sets it to workspace/generated_ai)
         flow.review_code(args.generated_dir, args.output_dir)
     
     elif args.command == "assess":

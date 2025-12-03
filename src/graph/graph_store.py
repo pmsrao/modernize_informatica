@@ -17,8 +17,8 @@ try:
 except ImportError:
     GraphDatabase = None
 
-from src.utils.logger import get_logger
-from src.utils.exceptions import ModernizationError
+from utils.logger import get_logger
+from utils.exceptions import ModernizationError
 
 logger = get_logger(__name__)
 
@@ -178,7 +178,13 @@ class GraphStore:
     @staticmethod
     def _create_transformation_tx(tx, model: Dict[str, Any]):
         """Transaction function to create transformation in graph."""
-        transformation_name = model.get("transformation_name", model.get("mapping_name", "unknown"))
+        # Try multiple keys to get transformation name
+        transformation_name = (
+            model.get("transformation_name") or 
+            model.get("mapping_name") or 
+            model.get("name") or 
+            "unknown"
+        )
         source_component_type = model.get("source_component_type", "mapping")
         
         # 1. Create Transformation node
@@ -418,11 +424,12 @@ class GraphStore:
                         
                         # Try to find matching input field
                         # First try in the same transformation
+                        # DERIVED_FROM relationship: input_field -> output_field (input feeds output)
                         result = tx.run("""
                             MATCH (input_port:Port {name: $ref, transformation: $transformation, parent_transformation: $trans_name, port_type: 'INPUT'})
                             MATCH (input_field:Field {name: $ref, transformation: $transformation, parent_transformation: $trans_name})
                             MATCH (output_field:Field {name: $field_name, transformation: $transformation, parent_transformation: $trans_name})
-                            MERGE (output_field)-[r:DERIVED_FROM]->(input_field)
+                            MERGE (input_field)-[r:DERIVED_FROM]->(output_field)
                             RETURN r
                         """, ref=ref_name, transformation=transformation_name, trans_name=trans_name, field_name=port_name)
                         
@@ -823,6 +830,35 @@ class GraphStore:
             if not from_trans or not to_trans:
                 continue
             
+            # Handle special case: OUTPUT means connecting to mapplet output ports
+            if to_trans == "OUTPUT":
+                # Connect transformation output to mapplet output port
+                # Find the mapplet output port matching to_port
+                tx.run("""
+                    MATCH (t1:Transformation {name: $from_trans, reusable_transformation: $reusable_transformation})
+                    MATCH (rt:ReusableTransformation {name: $reusable_transformation})
+                    MATCH (rt)-[:HAS_OUTPUT_PORT]->(output_port:Port {name: $to_port})
+                    MERGE (t1)-[r:CONNECTS_TO_OUTPUT]->(output_port)
+                    SET r.from_port = $from_port, r.to_port = $to_port
+                """, from_trans=from_trans, to_trans=to_trans, reusable_transformation=reusable_transformation_name,
+                      from_port=from_port, to_port=to_port)
+                logger.debug(f"Created Transformation->Output connector: {from_trans} -> OUTPUT ({to_port})")
+                continue
+            
+            # Handle special case: INPUT means connecting from mapplet input ports
+            if from_trans == "INPUT":
+                # Connect mapplet input port to transformation input
+                tx.run("""
+                    MATCH (rt:ReusableTransformation {name: $reusable_transformation})
+                    MATCH (rt)-[:HAS_INPUT_PORT]->(input_port:Port {name: $from_port})
+                    MATCH (t2:Transformation {name: $to_trans, reusable_transformation: $reusable_transformation})
+                    MERGE (input_port)-[r:CONNECTS_TO]->(t2)
+                    SET r.from_port = $from_port, r.to_port = $to_port
+                """, from_trans=from_trans, to_trans=to_trans, reusable_transformation=reusable_transformation_name,
+                      from_port=from_port, to_port=to_port)
+                logger.debug(f"Created Input->Transformation connector: INPUT ({from_port}) -> {to_trans}")
+                continue
+            
             # Transformation -> Transformation within reusable transformation
             tx.run("""
                 MATCH (t1:Transformation {name: $from_trans, reusable_transformation: $reusable_transformation})
@@ -831,6 +867,7 @@ class GraphStore:
                 SET r.from_port = $from_port, r.to_port = $to_port
             """, from_trans=from_trans, to_trans=to_trans, reusable_transformation=reusable_transformation_name,
                   from_port=from_port, to_port=to_port)
+            logger.debug(f"Created Transformation->Transformation connector: {from_trans} -> {to_trans}")
     
     def load_mapplet(self, mapplet_name: str) -> Optional[Dict[str, Any]]:
         """Load mapplet from Neo4j.

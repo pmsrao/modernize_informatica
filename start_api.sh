@@ -35,5 +35,5 @@ fi
 export ENABLE_GRAPH_STORE="${ENABLE_GRAPH_STORE:-true}"
 
 # Run from project root
-python -m uvicorn src.api.app:app --reload --port 8000 --host 0.0.0.0
+python -m uvicorn api.app:app --reload --port 8000 --host 0.0.0.0
 

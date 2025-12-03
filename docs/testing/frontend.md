@@ -29,7 +29,7 @@ python scripts/test_frontend_integration.py
 
 **Option A: HTML Test Page**
 ```bash
-open test_output/frontend_test.html
+open tests/output/frontend_test.html
 ```
 - Enter the File ID
 - Click "Load DAG"

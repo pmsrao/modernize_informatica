@@ -26,7 +26,7 @@ class SessionParser:
         
         # Normalize runtime configuration
         try:
-            from src.normalizer.runtime_config_normalizer import RuntimeConfigNormalizer
+            from normalizer.runtime_config_normalizer import RuntimeConfigNormalizer
             normalizer = RuntimeConfigNormalizer()
             task_runtime_config = normalizer.normalize_task_config(attributes)
         except Exception as e:

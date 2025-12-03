@@ -125,7 +125,7 @@ USE_MOCK_LLM=false
 ```bash
 # Quick test
 python -c "
-from src.llm.llm_manager import LLMManager
+from llm.llm_manager import LLMManager
 llm = LLMManager()
 print('Provider:', llm.client.__class__.__name__)
 response = llm.ask('Say hello in one sentence')

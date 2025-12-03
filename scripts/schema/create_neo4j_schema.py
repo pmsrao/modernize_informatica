@@ -28,7 +28,7 @@ except ImportError:
     print("ERROR: Neo4j driver not installed. Install with: pip install neo4j")
     sys.exit(1)
 
-from src.utils.logger import get_logger
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -90,6 +90,12 @@ def create_schema(uri: str, user: str, password: str):
             "CREATE INDEX field_transformation IF NOT EXISTS FOR (f:Field) ON (f.transformation)",
             "CREATE INDEX port_name IF NOT EXISTS FOR (p:Port) ON (p.name)",
             "CREATE INDEX port_transformation IF NOT EXISTS FOR (p:Port) ON (p.transformation)",
+            
+            # Composite indexes for common query patterns
+            "CREATE INDEX transformation_name_type IF NOT EXISTS FOR (t:Transformation) ON (t.name, t.type)",
+            "CREATE INDEX field_name_transformation IF NOT EXISTS FOR (f:Field) ON (f.name, f.transformation)",
+            "CREATE INDEX port_name_transformation IF NOT EXISTS FOR (p:Port) ON (p.name, p.transformation)",
+            "CREATE INDEX port_transformation_type IF NOT EXISTS FOR (p:Port) ON (p.transformation, p.port_type)",
         ]
         
         with driver.session() as session:

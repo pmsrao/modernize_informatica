@@ -10,8 +10,8 @@ if str(project_root) not in sys.path:
 if str(project_root / "src") not in sys.path:
     sys.path.insert(0, str(project_root / "src"))
 
-from src.graph.graph_store import GraphStore
-from src.utils.logger import get_logger
+from graph.graph_store import GraphStore
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -530,8 +530,24 @@ class GraphQueries:
             List of source fields that feed into this field
         """
         with self.graph_store.driver.session() as session:
+            # First try direct DERIVED_FROM relationships (same transformation)
             result = session.run("""
+                MATCH (target_field:Field {name: $field_name, transformation: $transformation})
+                MATCH (source_field:Field)-[:DERIVED_FROM]->(target_field)
+                WHERE source_field.transformation = $transformation
+                RETURN DISTINCT source_field.name as source_field,
+                       source_field.transformation as source_transformation,
+                       source_field.parent_transformation as source_parent_transformation,
+                       1 as depth
+                ORDER BY source_field.name
+            """, field_name=field_name, transformation=transformation_name)
+            
+            direct_lineage = [dict(record) for record in result]
+            
+            # Also try path-based queries for cross-transformation lineage
+            result2 = session.run("""
                 MATCH path = (source_field:Field)-[:FEEDS|DERIVED_FROM*]->(target_field:Field {name: $field_name, transformation: $transformation})
+                WHERE source_field <> target_field
                 RETURN DISTINCT source_field.name as source_field,
                        source_field.transformation as source_transformation,
                        source_field.parent_transformation as source_parent_transformation,
@@ -539,7 +555,18 @@ class GraphQueries:
                 ORDER BY depth
             """, field_name=field_name, transformation=transformation_name)
             
-            return [dict(record) for record in result]
+            path_lineage = [dict(record) for record in result2]
+            
+            # Combine and deduplicate
+            seen = set()
+            combined = []
+            for item in direct_lineage + path_lineage:
+                key = (item.get("source_field"), item.get("source_transformation"))
+                if key not in seen:
+                    seen.add(key)
+                    combined.append(item)
+            
+            return combined
     
     def get_field_impact(self, field_name: str, transformation_name: str) -> List[Dict[str, Any]]:
         """Get impact analysis for a field - find all fields that depend on this field.
@@ -552,8 +579,24 @@ class GraphQueries:
             List of dependent fields
         """
         with self.graph_store.driver.session() as session:
+            # First try direct DERIVED_FROM relationships (same transformation)
             result = session.run("""
+                MATCH (source_field:Field {name: $field_name, transformation: $transformation})
+                MATCH (target_field:Field)-[:DERIVED_FROM]->(source_field)
+                WHERE target_field.transformation = $transformation
+                RETURN DISTINCT target_field.name as target_field,
+                       target_field.transformation as target_transformation,
+                       target_field.parent_transformation as target_parent_transformation,
+                       1 as depth
+                ORDER BY target_field.name
+            """, field_name=field_name, transformation=transformation_name)
+            
+            direct_impact = [dict(record) for record in result]
+            
+            # Also try path-based queries for cross-transformation impact
+            result2 = session.run("""
                 MATCH path = (source_field:Field {name: $field_name, transformation: $transformation})-[:FEEDS|DERIVED_FROM*]->(target_field:Field)
+                WHERE source_field <> target_field
                 RETURN DISTINCT target_field.name as target_field,
                        target_field.transformation as target_transformation,
                        target_field.parent_transformation as target_parent_transformation,
@@ -561,7 +604,18 @@ class GraphQueries:
                 ORDER BY depth
             """, field_name=field_name, transformation=transformation_name)
             
-            return [dict(record) for record in result]
+            path_impact = [dict(record) for record in result2]
+            
+            # Combine and deduplicate
+            seen = set()
+            combined = []
+            for item in direct_impact + path_impact:
+                key = (item.get("target_field"), item.get("target_transformation"))
+                if key not in seen:
+                    seen.add(key)
+                    combined.append(item)
+            
+            return combined
     
     def get_cross_pipeline_field_dependencies(self, field_name: str) -> List[Dict[str, Any]]:
         """Find field dependencies across different pipelines/transformations.
@@ -668,10 +722,10 @@ class GraphQueries:
         # Simple filesystem-based tree structure
         # Show generated_ai (AI-reviewed code) instead of generated
         project_root = Path(__file__).parent.parent.parent
-        generated_dir = project_root / "test_log" / "generated_ai"
+        generated_dir = project_root / "workspace" / "generated_ai"
         # Fallback to generated if generated_ai doesn't exist
         if not generated_dir.exists():
-            generated_dir = project_root / "test_log" / "generated"
+            generated_dir = project_root / "workspace" / "generated"
         
         def build_tree(path: Path, rel_path: str = "") -> Dict[str, Any]:
             """Recursively build tree structure from filesystem."""
@@ -718,7 +772,7 @@ class GraphQueries:
         
         # Simple filesystem-based tree structure for source files
         project_root = Path(__file__).parent.parent.parent
-        staging_dir = project_root / "test_log" / "staging"
+        staging_dir = project_root / "workspace" / "staging"
         
         def build_tree(path: Path, rel_path: str = "") -> Dict[str, Any]:
             """Recursively build tree structure from filesystem."""

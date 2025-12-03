@@ -1,8 +1,8 @@
 """FastAPI App — Production Style"""
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from src.config import settings
-from src.utils.logger import get_logger
+from config import settings
+from utils.logger import get_logger
 from .routes import router
 
 logger = get_logger(__name__)
