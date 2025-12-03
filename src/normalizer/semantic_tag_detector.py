@@ -23,7 +23,9 @@ class SemanticTagDetector:
         tags = []
         
         transformations = canonical_model.get("transformations", [])
-        scd_type = canonical_model.get("scd_type", "NONE")
+        # Check scd_info dict first, then fall back to scd_type
+        scd_info = canonical_model.get("scd_info", {})
+        scd_type = scd_info.get("type", "NONE") if isinstance(scd_info, dict) else canonical_model.get("scd_type", "NONE")
         transformation_name = canonical_model.get("transformation_name", canonical_model.get("mapping_name", "unknown"))
         
         logger.debug(f"Detecting semantic tags for transformation: {transformation_name}")
