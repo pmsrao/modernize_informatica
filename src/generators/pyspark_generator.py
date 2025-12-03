@@ -211,7 +211,10 @@ class PySparkGenerator:
             return lines
         
         # Broadcast join for lookup (both connected and unconnected can be joined)
+        # Lookup tables are typically small and benefit from broadcast join
         lines.append(f"lookup_df = spark.table('{table_name}')")
+        lines.append(f"# Performance optimization: Using broadcast join for lookup table")
+        lines.append(f"# Broadcast join is efficient for small lookup tables (< 100MB)")
         
         if condition:
             source_port = condition.get("source_port", "")
@@ -235,17 +238,33 @@ class PySparkGenerator:
     def _generate_joiner(self, trans: Dict[str, Any]) -> List[str]:
         """Generate code for Joiner transformation."""
         lines = []
-        lines.append(f"# Joiner: {trans.get('name', '')}")
+        trans_name = trans.get('name', '')
+        lines.append(f"# Joiner: {trans_name}")
         
         join_type = trans.get("join_type", "INNER").lower()
         conditions = trans.get("conditions", [])
+        
+        # Check if we should use broadcast join for small tables
+        # Look for optimization hints or check if right side is likely small
+        use_broadcast = trans.get("_optimization_hint") == "broadcast_join" or \
+                       trans.get("right_table_size", "unknown") == "small"
         
         if conditions:
             join_condition = " && ".join([
                 f"df1['{c.get('left_port', '')}'] == df2['{c.get('right_port', '')}']"
                 for c in conditions
             ])
-            lines.append(f"df = df1.join(df2, {join_condition}, '{join_type}')")
+            
+            if use_broadcast:
+                lines.append(f"# Using broadcast join for small right table (optimization)")
+                lines.append(f"df2_broadcast = F.broadcast(df2)")
+                lines.append(f"df = df1.join(df2_broadcast, {join_condition}, '{join_type}')")
+            else:
+                lines.append(f"df = df1.join(df2, {join_condition}, '{join_type}')")
+                lines.append(f"# Performance hint: Consider broadcast join if df2 is small (< 100MB)")
+        else:
+            lines.append(f"# Join conditions not fully specified for {trans_name}")
+            lines.append(f"# df = df1.join(df2, join_condition, '{join_type}')")
         
         return lines
     
@@ -262,9 +281,16 @@ class PySparkGenerator:
             lines.append(f"# No group by or aggregate functions found for {trans_name}")
             return lines
         
+        # Check for optimization hints
+        use_partitioning = trans.get("_optimization_hint") == "partition_by_group_by"
+        
         # Build group by columns
         if group_by_ports:
             group_cols = [f"F.col('{p}')" for p in group_by_ports]
+            if use_partitioning:
+                lines.append(f"# Performance optimization: Partitioning by group-by columns")
+                lines.append(f"# Consider repartitioning before aggregation if data is skewed:")
+                lines.append(f"# df = df.repartition(*[{', '.join(group_cols)}])")
         else:
             # If no explicit group by, might be a global aggregate
             group_cols = []
@@ -293,9 +319,13 @@ class PySparkGenerator:
         if agg_exprs:
             if group_cols:
                 lines.append(f"df = df.groupBy({', '.join(group_cols)}).agg({', '.join(agg_exprs)})")
+                # Add performance hint for large datasets
+                lines.append(f"# Performance hint: For large datasets, consider using window functions or")
+                lines.append(f"# caching intermediate results if this aggregation is reused")
             else:
                 # Global aggregate (no group by)
                 lines.append(f"df = df.agg({', '.join(agg_exprs)})")
+                lines.append(f"# Performance hint: Global aggregation processes all data - consider filtering early")
         elif group_cols:
             # Only group by, no aggregates
             lines.append(f"df = df.groupBy({', '.join(group_cols)})")

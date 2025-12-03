@@ -108,6 +108,74 @@ class GraphStore:
         return transformation_name
     
     @staticmethod
+    def _extract_field_references(expression: str) -> List[Dict[str, Any]]:
+        """Extract field references from an Informatica expression.
+        
+        Handles multiple patterns:
+        - Simple field names: field_name
+        - Port references: :EXP.field_name, :LKP.field_name, :AGG.field_name
+        - Qualified names: transformation.field_name
+        
+        Args:
+            expression: Informatica expression string
+            
+        Returns:
+            List of dicts with 'field_name' and optional 'transformation' keys
+        """
+        if not expression:
+            return []
+        
+        field_refs = []
+        
+        # Pattern 1: Port references like :EXP.field_name, :LKP.field_name, :AGG.field_name
+        # Also handle :transformation.field_name
+        port_ref_pattern = r':([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)'
+        port_matches = re.findall(port_ref_pattern, expression)
+        for trans_ref, field_name in port_matches:
+            field_refs.append({
+                "field_name": field_name,
+                "transformation": trans_ref.upper()  # Store transformation reference
+            })
+        
+        # Pattern 2: Qualified names like transformation.field_name
+        qualified_pattern = r'\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\b'
+        qualified_matches = re.findall(qualified_pattern, expression)
+        for trans_name, field_name in qualified_matches:
+            # Skip if it's a function call (e.g., TO_DATE.field would be wrong)
+            if trans_name.upper() not in ['TO_DATE', 'TO_CHAR', 'SUBSTR', 'SUBSTRING', 'TRIM', 'UPPER', 'LOWER']:
+                field_refs.append({
+                    "field_name": field_name,
+                    "transformation": trans_name
+                })
+        
+        # Pattern 3: Simple field names (identifiers that aren't functions)
+        # Extract all identifiers
+        identifiers = re.findall(r'\b([A-Za-z_][A-Za-z0-9_]*)\b', expression)
+        
+        # Filter out function names, keywords, and already captured references
+        keywords = {'IIF', 'DECODE', 'SUBSTR', 'SUBSTRING', 'TRIM', 'UPPER', 'LOWER', 'TO_DATE', 'TO_CHAR', 
+                   'NULL', 'TRUE', 'FALSE', 'LENGTH', 'CONCAT', 'REPLACESTR', 'INSTR', 'ISNULL', 'IS_DATE', 
+                   'IS_NUMBER', 'IS_SPACES', 'IS_ALPHA', 'IS_DIGIT', 'IS_UPPER', 'IS_LOWER', 'ABS', 'ROUND', 
+                   'CEIL', 'FLOOR', 'SQRT', 'POWER', 'EXP', 'LN', 'LOG', 'MOD', 'RAND', 'SIGN', 'GREATEST', 
+                   'LEAST', 'MAX', 'MIN', 'SUM', 'AVG', 'COUNT', 'FIRST', 'LAST', 'MEDIAN', 'PERCENTILE', 
+                   'STDDEV', 'VARIANCE', 'CORR', 'COVAR', 'REGR_SLOPE', 'REGR_INTERCEPT', 'REGR_R2', 
+                   'REGR_AVGX', 'REGR_AVGY', 'REGR_SXX', 'REGR_SYY', 'REGR_SXY', 'AND', 'OR', 'NOT', 
+                   'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'IF', 'ELSEIF', 'NVL', 'COALESCE'}
+        
+        # Get already captured field names to avoid duplicates
+        captured_fields = {ref["field_name"].upper() for ref in field_refs}
+        
+        for identifier in identifiers:
+            identifier_upper = identifier.upper()
+            if identifier_upper not in keywords and identifier_upper not in captured_fields:
+                field_refs.append({
+                    "field_name": identifier,
+                    "transformation": None  # Same transformation
+                })
+        
+        return field_refs
+    
+    @staticmethod
     def _create_transformation_tx(tx, model: Dict[str, Any]):
         """Transaction function to create transformation in graph."""
         transformation_name = model.get("transformation_name", model.get("mapping_name", "unknown"))
@@ -324,34 +392,49 @@ class GraphStore:
                 # This enables column-level lineage
                 if port_type in ["OUTPUT", "INPUT/OUTPUT"] and port_expression:
                     logger.debug(f"Creating DERIVED_FROM for port: {port_name}, expression: {port_expression}")
-                    # Extract field references from expression (simplified - could be enhanced with AST)
-                    # Look for patterns like field_name or :transformation.field_name
-                    # Simple pattern: word characters that might be field names
-                    # This is a simplified approach - full implementation would use AST
-                    field_refs = re.findall(r'\b([A-Za-z_][A-Za-z0-9_]*)\b', port_expression)
+                    
+                    # Extract field references from expression
+                    # Handle multiple patterns:
+                    # 1. Simple field names: field_name
+                    # 2. Port references: :EXP.field_name, :LKP.field_name, :AGG.field_name
+                    # 3. Qualified names: transformation.field_name
+                    field_refs = GraphStore._extract_field_references(port_expression)
                     logger.debug(f"Extracted field refs from expression: {field_refs}")
                     
-                    # Try to match these references to input fields in the same transformation
-                    # or fields from connected transformations
-                    for ref in field_refs:
+                    # Try to match these references to input fields
+                    for ref_info in field_refs:
+                        ref_name = ref_info.get("field_name")
+                        ref_transformation = ref_info.get("transformation")  # May be None for same transformation
+                        
                         # Skip Informatica functions and keywords
-                        if ref.upper() in ['IIF', 'DECODE', 'SUBSTR', 'SUBSTRING', 'TRIM', 'UPPER', 'LOWER', 'TO_DATE', 'TO_CHAR', 'NULL', 'TRUE', 'FALSE', 'LENGTH', 'CONCAT', 'REPLACESTR', 'INSTR', 'ISNULL', 'ISNULL', 'IS_DATE', 'IS_NUMBER', 'IS_SPACES', 'IS_ALPHA', 'IS_DIGIT', 'IS_UPPER', 'IS_LOWER', 'ABS', 'ROUND', 'CEIL', 'FLOOR', 'SQRT', 'POWER', 'EXP', 'LN', 'LOG', 'MOD', 'RAND', 'SIGN', 'GREATEST', 'LEAST', 'MAX', 'MIN', 'SUM', 'AVG', 'COUNT', 'FIRST', 'LAST', 'MEDIAN', 'PERCENTILE', 'STDDEV', 'VARIANCE', 'CORR', 'COVAR', 'REGR_SLOPE', 'REGR_INTERCEPT', 'REGR_R2', 'REGR_AVGX', 'REGR_AVGY', 'REGR_SXX', 'REGR_SYY', 'REGR_SXY']:
+                        if ref_name.upper() in ['IIF', 'DECODE', 'SUBSTR', 'SUBSTRING', 'TRIM', 'UPPER', 'LOWER', 'TO_DATE', 'TO_CHAR', 'NULL', 'TRUE', 'FALSE', 'LENGTH', 'CONCAT', 'REPLACESTR', 'INSTR', 'ISNULL', 'IS_DATE', 'IS_NUMBER', 'IS_SPACES', 'IS_ALPHA', 'IS_DIGIT', 'IS_UPPER', 'IS_LOWER', 'ABS', 'ROUND', 'CEIL', 'FLOOR', 'SQRT', 'POWER', 'EXP', 'LN', 'LOG', 'MOD', 'RAND', 'SIGN', 'GREATEST', 'LEAST', 'MAX', 'MIN', 'SUM', 'AVG', 'COUNT', 'FIRST', 'LAST', 'MEDIAN', 'PERCENTILE', 'STDDEV', 'VARIANCE', 'CORR', 'COVAR', 'REGR_SLOPE', 'REGR_INTERCEPT', 'REGR_R2', 'REGR_AVGX', 'REGR_AVGY', 'REGR_SXX', 'REGR_SYY', 'REGR_SXY', 'AND', 'OR', 'NOT', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'IF', 'ELSEIF']:
                             continue
                         
-                        logger.debug(f"Looking for input field: {ref} in transformation: {trans_name}")
-                        # Try to find matching input field in the same transformation
+                        # Determine which transformation to look in
+                        search_transformation = ref_transformation if ref_transformation else trans_name
+                        search_transformation_name = transformation_name if not ref_transformation else ref_transformation
+                        
+                        logger.debug(f"Looking for input field: {ref_name} in transformation: {search_transformation}")
+                        
+                        # Try to find matching input field
+                        # First try in the same transformation
                         result = tx.run("""
                             MATCH (input_port:Port {name: $ref, transformation: $transformation, parent_transformation: $trans_name, port_type: 'INPUT'})
                             MATCH (input_field:Field {name: $ref, transformation: $transformation, parent_transformation: $trans_name})
                             MATCH (output_field:Field {name: $field_name, transformation: $transformation, parent_transformation: $trans_name})
                             MERGE (output_field)-[r:DERIVED_FROM]->(input_field)
                             RETURN r
-                        """, ref=ref, transformation=transformation_name, trans_name=trans_name, field_name=field_name)
+                        """, ref=ref_name, transformation=transformation_name, trans_name=trans_name, field_name=port_name)
                         
                         if result.single():
-                            logger.debug(f"Created DERIVED_FROM relationship: {field_name} -> {ref}")
+                            logger.debug(f"Created DERIVED_FROM relationship: {port_name} -> {ref_name} (same transformation)")
                         else:
-                            logger.debug(f"No matching input field found for: {ref} in transformation: {trans_name}")
+                            # Try to find in connected transformations (for port references like :LKP.field)
+                            # This requires checking connectors to find the source transformation
+                            logger.debug(f"No matching input field found for: {ref_name} in transformation: {trans_name}")
+                            # Note: Cross-transformation field references would require connector analysis
+                            # For now, we log but don't create relationships across transformations
+                            # This can be enhanced later with connector-based field matching
         
         # 5. Create Connector relationships
         logger.debug(f"Creating {len(model.get('connectors', []))} connector relationships")
