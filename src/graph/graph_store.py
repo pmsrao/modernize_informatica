@@ -323,26 +323,35 @@ class GraphStore:
                 # For output ports with expressions, create DERIVED_FROM relationships
                 # This enables column-level lineage
                 if port_type in ["OUTPUT", "INPUT/OUTPUT"] and port_expression:
+                    logger.debug(f"Creating DERIVED_FROM for port: {port_name}, expression: {port_expression}")
                     # Extract field references from expression (simplified - could be enhanced with AST)
                     # Look for patterns like field_name or :transformation.field_name
                     # Simple pattern: word characters that might be field names
                     # This is a simplified approach - full implementation would use AST
                     field_refs = re.findall(r'\b([A-Za-z_][A-Za-z0-9_]*)\b', port_expression)
+                    logger.debug(f"Extracted field refs from expression: {field_refs}")
                     
                     # Try to match these references to input fields in the same transformation
                     # or fields from connected transformations
                     for ref in field_refs:
                         # Skip Informatica functions and keywords
-                        if ref.upper() in ['IIF', 'DECODE', 'SUBSTR', 'TRIM', 'UPPER', 'LOWER', 'TO_DATE', 'TO_CHAR', 'NULL', 'TRUE', 'FALSE']:
+                        if ref.upper() in ['IIF', 'DECODE', 'SUBSTR', 'SUBSTRING', 'TRIM', 'UPPER', 'LOWER', 'TO_DATE', 'TO_CHAR', 'NULL', 'TRUE', 'FALSE', 'LENGTH', 'CONCAT', 'REPLACESTR', 'INSTR', 'ISNULL', 'ISNULL', 'IS_DATE', 'IS_NUMBER', 'IS_SPACES', 'IS_ALPHA', 'IS_DIGIT', 'IS_UPPER', 'IS_LOWER', 'ABS', 'ROUND', 'CEIL', 'FLOOR', 'SQRT', 'POWER', 'EXP', 'LN', 'LOG', 'MOD', 'RAND', 'SIGN', 'GREATEST', 'LEAST', 'MAX', 'MIN', 'SUM', 'AVG', 'COUNT', 'FIRST', 'LAST', 'MEDIAN', 'PERCENTILE', 'STDDEV', 'VARIANCE', 'CORR', 'COVAR', 'REGR_SLOPE', 'REGR_INTERCEPT', 'REGR_R2', 'REGR_AVGX', 'REGR_AVGY', 'REGR_SXX', 'REGR_SYY', 'REGR_SXY']:
                             continue
                         
+                        logger.debug(f"Looking for input field: {ref} in transformation: {trans_name}")
                         # Try to find matching input field in the same transformation
-                        tx.run("""
+                        result = tx.run("""
                             MATCH (input_port:Port {name: $ref, transformation: $transformation, parent_transformation: $trans_name, port_type: 'INPUT'})
                             MATCH (input_field:Field {name: $ref, transformation: $transformation, parent_transformation: $trans_name})
                             MATCH (output_field:Field {name: $field_name, transformation: $transformation, parent_transformation: $trans_name})
-                            MERGE (output_field)-[:DERIVED_FROM]->(input_field)
+                            MERGE (output_field)-[r:DERIVED_FROM]->(input_field)
+                            RETURN r
                         """, ref=ref, transformation=transformation_name, trans_name=trans_name, field_name=field_name)
+                        
+                        if result.single():
+                            logger.debug(f"Created DERIVED_FROM relationship: {field_name} -> {ref}")
+                        else:
+                            logger.debug(f"No matching input field found for: {ref} in transformation: {trans_name}")
         
         # 5. Create Connector relationships
         logger.debug(f"Creating {len(model.get('connectors', []))} connector relationships")

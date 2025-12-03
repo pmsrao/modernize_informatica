@@ -85,6 +85,9 @@ class MappingNormalizer:
                 tag_detector = SemanticTagDetector()
                 semantic_tags = tag_detector.detect_tags({
                     "transformations": transformations,
+                    "connectors": connectors,
+                    "sources": sources,
+                    "targets": targets,
                     "scd_type": scd_info.get("type", "NONE"),
                     "incremental_keys": incremental_keys
                 })

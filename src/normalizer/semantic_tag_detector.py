@@ -33,34 +33,34 @@ class SemanticTagDetector:
         if self._detect_cdc_pattern(canonical_model):
             tags.append("cdc")
         
-        # Lookup-heavy detection
+        # Lookup-heavy detection (lowered threshold: >= 1 instead of >= 3)
         lookup_count = sum(1 for t in transformations if t.get("type", "").upper() == "LOOKUP")
-        if lookup_count >= 3:
+        if lookup_count >= 1:
             tags.append("lookup-heavy")
         
-        # Multi-join detection
+        # Multi-join detection (lowered threshold: >= 1 instead of >= 2)
         join_count = sum(1 for t in transformations if t.get("type", "").upper() == "JOINER")
-        if join_count >= 2:
+        if join_count >= 1:
             tags.append("multi-join")
         
-        # Aggregation-heavy detection
+        # Aggregation-heavy detection (lowered threshold: >= 1 instead of >= 2)
         agg_count = sum(1 for t in transformations if t.get("type", "").upper() == "AGGREGATOR")
-        if agg_count >= 2:
+        if agg_count >= 1:
             tags.append("aggregation-heavy")
         
-        # Expression-heavy detection
+        # Expression-heavy detection (lowered threshold: >= 2 instead of >= 5)
         expr_count = sum(1 for t in transformations if t.get("type", "").upper() == "EXPRESSION")
-        if expr_count >= 5:
+        if expr_count >= 2:
             tags.append("expression-heavy")
         
-        # Router-heavy detection (data splitting)
+        # Router-heavy detection (data splitting) (lowered threshold: >= 1 instead of >= 2)
         router_count = sum(1 for t in transformations if t.get("type", "").upper() == "ROUTER")
-        if router_count >= 2:
+        if router_count >= 1:
             tags.append("data-splitting")
         
-        # Filter-heavy detection
+        # Filter-heavy detection (lowered threshold: >= 1 instead of >= 3)
         filter_count = sum(1 for t in transformations if t.get("type", "").upper() == "FILTER")
-        if filter_count >= 3:
+        if filter_count >= 1:
             tags.append("filter-heavy")
         
         return tags
