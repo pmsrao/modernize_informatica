@@ -1713,9 +1713,51 @@ async def list_all_mappings():
         )
 
 
+@router.get("/graph/pipelines")
+async def list_pipelines():
+    """List all pipelines (generic term for workflows) with tasks and transformations.
+    
+    Returns:
+        List of pipelines with their structure
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        pipelines = graph_queries.list_pipelines()
+        
+        # Enhance with full structure
+        enhanced_pipelines = []
+        for pipeline in pipelines:
+            pipeline_name = pipeline.get("name")
+            if pipeline_name:
+                structure = graph_queries.get_pipeline_structure(pipeline_name)
+                if structure:
+                    enhanced_pipelines.append(structure)
+                else:
+                    enhanced_pipelines.append(pipeline)
+        
+        return {
+            "success": True,
+            "pipelines": enhanced_pipelines,
+            "count": len(enhanced_pipelines)
+        }
+    except Exception as e:
+        logger.error(f"List pipelines failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"List pipelines failed: {str(e)}"
+        )
+
+
 @router.get("/graph/workflows")
 async def list_workflows():
     """List all workflows with sessions and mappings.
+    
+    DEPRECATED: Use /graph/pipelines instead. This endpoint is kept for backward compatibility.
     
     Returns:
         List of workflows with their structure
