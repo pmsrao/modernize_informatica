@@ -1,6 +1,107 @@
 # System Architecture Overview
 
-> **Note**: For a comprehensive solution overview including graph-first architecture, see [`solution.md`](solution.md)
+> **Note**: For a comprehensive solution overview including graph-first architecture, see [`solution.md`](../development/solution.md)
+
+## Purpose & Problem Statement
+
+Legacy Informatica ETL + traditional DW stacks create issues such as:
+- Vendor lock-in, operational complexity, slow change velocity
+- Poor visibility into business rules encoded in mappings
+- Difficulty onboarding new teams
+- High migration effort for Lakehouse modernization
+
+This platform provides an **AI-augmented modernization accelerator** that:
+1. Reverse-engineers Informatica assets (workflow, worklet, session, mapping XMLs)
+2. Converts everything into a normalized, technology-neutral canonical data model
+3. Builds complete lineage graphs
+4. Generates modern code (PySpark, Delta Live Tables, SQL, specs, tests)
+5. Provides deep AI reasoning (summaries, risks, optimizations, code-fix, reconstruction)
+6. Enables a near‑zero‑touch migration to Lakehouse architectures
+
+---
+
+## High-Level Architecture
+
+### Logical Flow
+
+At the highest level, the system can be viewed as:
+
+1. **Input**: Informatica XML files (Workflow, Worklet, Session, Mapping)
+2. **Parsing**: Structured extraction of transformations, fields, connectors, and configuration
+3. **Canonical Modeling**: Normalization into a technology-neutral representation
+4. **Expression Processing**: Building ASTs from Informatica expressions and translating them
+5. **Code & Spec Generation**: PySpark/SQL/DLT/specs/reconciliation/tests
+6. **AI & LLM Reasoning**: Explanation, summarization, risk analysis, optimization, reconstruction
+7. **DAG Construction**: Building workflow-level execution graphs
+8. **Delivery**: Through REST API, UI, files, and integration with catalogs/storage/CI
+
+### Textual Architecture Diagram
+
+```text
+Informatica XMLs
+  (Workflow / Worklet / Session / Mapping)
+                 |
+                 v
+          [ XML Parsers ]
+                 |
+                 v
+      [ Canonical Model + Lineage ]
+                 |
+                 v
+      [ Expression AST Engine ]
+                 |
+                 v
+      [ Code Generators ]
+   (PySpark / SQL / DLT / Specs / Tests)
+                 |
+                 v
+      [ AI & LLM Agents Layer ]
+                 |
+                 v
+        [ Workflow DAG Engine ]
+                 |
+                 v
+     [ API + UI + Deployment Layer ]
+```
+
+### Component Overview
+
+#### Input Layer
+- **XML Files**: Workflow, Worklet, Session, Mapping XML files from Informatica
+
+#### Processing Layer
+- **XML Parsers**: Extract structured data from XML
+- **Canonical Model**: Technology-neutral representation
+- **Expression Engine**: Parse and translate expressions
+- **Code Generators**: Generate target platform code
+
+#### Intelligence Layer
+- **AI Agents**: LLM-powered analysis and reasoning
+- **DAG Engine**: Workflow execution graph construction
+
+#### Delivery Layer
+- **Backend API**: RESTful API for programmatic access
+- **Frontend UI**: Interactive web interface
+- **Deployment**: Docker, Kubernetes, CI/CD integration
+
+### Data Flow
+
+1. **XML → Parsed Data**: XML parsers extract structured information
+2. **Parsed Data → Canonical Model**: Normalization ensures consistency
+3. **Canonical Model → Code**: Generators produce executable artifacts
+4. **Canonical Model → AI Insights**: Agents provide analysis and recommendations
+5. **Workflow XML → DAG**: DAG engine constructs execution graphs
+6. **All → API/UI**: Results delivered through interfaces
+
+### Key Design Principles
+
+1. **Modularity**: Each component is independent and replaceable
+2. **Canonical Model**: Single source of truth for all downstream processing
+3. **Extensibility**: Easy to add new parsers, generators, or agents
+4. **AI-Augmented**: LLMs enhance but don't replace deterministic logic
+5. **Regeneration-Friendly**: Code can be regenerated from design specs
+
+---
 
 ## a) Overview
 
@@ -665,6 +766,67 @@ graph TB
 3. **New AI Agent**: Add agent class in `ai_agents/` and register in orchestrator
 4. **New LLM Provider**: Add client in `src/llm/` and register in LLM Manager
 5. **New Transformation Type**: Extend normalizer and generators
+
+---
+
+## Internal Canonical Model Contract
+
+This is the **single source of truth** for all downstream engines.
+
+```json
+{
+  "mapping_name": "M_LOAD_CUSTOMER",
+  "sources": [...],
+  "targets": [...],
+  "transformations": [...],
+  "connectors": [...],
+  "lineage": {...},
+  "scd_type": "SCD2",
+  "incremental_keys": ["LAST_UPDATED_DT"]
+}
+```
+
+**Note**: The canonical model may also use `transformation_name` instead of `mapping_name` depending on the component type. Both are supported for compatibility.
+
+---
+
+## Supported Informatica Transformations
+
+The system supports the following Informatica transformation types:
+
+- **SourceQualifier**: Source data extraction
+- **Expression**: Field-level transformations and calculations
+- **Lookup**: Reference data lookups
+- **Aggregator**: Grouping and aggregation operations
+- **Router**: Conditional routing to multiple targets
+- **Filter**: Row-level filtering
+- **Joiner**: Join operations between sources
+- **Union**: Union operations
+- **Normalizer**: Normalization of denormalized data
+- **Update Strategy**: Insert/update/delete logic
+- **Custom transformations**: Extensible for custom transformation types
+
+---
+
+## Regeneration Approach
+
+This architecture specification serves as the **source of truth**:
+- Code can be regenerated from the canonical model
+- Any improvements flow into all layers
+- Provides blueprint for onboarding new developers
+- Ensures consistency across all components
+
+---
+
+## Future Enhancements
+
+Potential future enhancements include:
+- ML-based expression pattern mining
+- Migration wave planner
+- Databricks Jobs orchestration generator
+- Full reconciler & data quality suite
+- Enhanced pattern detection and reuse
+- Automated library extraction from common patterns
 
 ---
 

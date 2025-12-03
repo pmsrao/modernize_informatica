@@ -561,7 +561,7 @@ STEP G: Generate Code
 ## Related Documentation
 
 - **Canonical Model**: `docs/modules/canonical_model.md`
-- **Solution Process**: `docs/solution_process_details.md`
+- **Solution Process**: `docs/development/solution.md` (includes detailed process documentation)
 - **Test Flow Guide**: `docs/test_flow_guide.md`
 - **Neo4j Setup**: `docs/setup_neo4j.md`
 

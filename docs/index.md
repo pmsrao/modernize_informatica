@@ -4,6 +4,23 @@
 
 Welcome to the Informatica Modernization Accelerator documentation. This index helps you navigate to the information you need.
 
+## Documentation Structure
+
+```
+docs/
+├── getting-started/     # Quick start guides
+├── architecture/         # Architecture documentation
+├── modules/             # Module-specific docs
+├── guides/              # User guides
+├── api/                 # API documentation
+├── ai/                  # AI/LLM documentation
+├── deployment/          # Deployment guides
+├── development/         # Development docs
+├── testing/            # Testing documentation
+├── reference/          # Reference materials
+└── archive/            # Legacy/archived docs
+```
+
 ---
 
 ## 🚀 Getting Started
@@ -15,7 +32,7 @@ Welcome to the Informatica Modernization Accelerator documentation. This index h
 
 ## 📚 Core Documentation
 
-### [Architecture](architecture/README.md)
+### [Architecture](architecture/system_architecture.md)
 High-level architecture, logical flow, and system design overview.
 
 ### [Canonical Model](modules/canonical_model.md)
@@ -67,11 +84,9 @@ Main testing documentation with links to detailed guides.
 - **[LLM Configuration](guides/llm_configuration.md)** - LLM setup and configuration
 - **[LLM Quick Reference](guides/llm_quick_reference.md)** - Quick LLM reference
 - **[Analysis Report](guides/analysis_report.md)** - Analysis of implementation status
-- **[Next Steps](guides/next_steps.md)** - Recommended next steps
+- **[CLI Usage Guide](guides/cli_usage_guide.md)** - Command-line interface usage
 - **[Testing and Validation](guides/testing_validation.md)** - Testing and validation guide
-- **[Migration Guide](guides/migration_guide.md)** - Step-by-step migration instructions
 - **[Error Handling](guides/error_handling.md)** - Error categorization and recovery guide
-- **[Testing and Validation](guides/testing_validation.md)** - Testing and validation guide
 
 ---
 
@@ -87,17 +102,13 @@ Main testing documentation with links to detailed guides.
 
 - **[Roadmap](reference/roadmap.md)** - Implementation status and next steps
 - **[Lakebridge Comparison](reference/lakebridge_comparison.md)** - Comparison with Databricks Lakebridge
-- **[Implementation Summary](reference/implementation_summary.md)** - Implementation overview
-- **[Implementation Complete Summary](reference/implementation_complete_summary.md)** - Complete implementation details
-- **[Next Steps Recommendations](reference/next_steps_recommendations.md)** - Recommended next steps
+- **[Canonical Model Review](reference/canonical_model_review_gpt.md)** - External review of canonical model design
 
 ---
 
 ## 🔧 Development
 
-- **[Design Specification](development/design_spec.md)** - Formal architectural specification
-- **[Solution Overview](development/solution.md)** - Complete solution architecture
-- **[Solution Process Details](development/solution_process_details.md)** - Solution process documentation
+- **[Solution Overview](development/solution.md)** - Complete solution architecture with detailed process documentation
 - **[Code Generation Fixes](development/code_generation_fixes_summary.md)** - Code generation fixes
 - **[Code Generation Issues](development/code_generation_issues_fixes.md)** - Code generation issues and fixes
 - **[Neo4j Persistence Fix](development/neo4j_persistence_fix.md)** - Neo4j persistence fixes
@@ -119,7 +130,7 @@ Legacy and archived documentation:
 - **Getting Started**: See [Introduction](getting-started/introduction.md) and [Setup Neo4j](getting-started/setup_neo4j.md)
 - **Testing**: See [Testing Guide](testing/TESTING.md)
 - **Development**: See [Roadmap](reference/roadmap.md)
-- **Design**: See [Design Specification](development/design_spec.md)
+- **Architecture**: See [System Architecture](architecture/system_architecture.md) and [Solution Overview](development/solution.md)
 
 ---
 

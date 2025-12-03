@@ -25,7 +25,7 @@ Areas you can extend:
 
 Two main documents act as source-of-truth:
 
-- `design_spec.md` — formal architectural & component-centric design
+- `docs/architecture/system_architecture.md` — formal architectural & component-centric design
 - `docs/` — conceptual documentation (this directory)
 
 With these, you can instruct Cursor (or any AI coding assistant) to:
@@ -36,9 +36,9 @@ With these, you can instruct Cursor (or any AI coding assistant) to:
 
 A typical regeneration workflow:
 
-1. Update `design_spec.md` to reflect new design decisions.
+1. Update `docs/architecture/system_architecture.md` to reflect new design decisions.
 2. Use a prompt like:
-   "Based on design_spec.md section 'Expression Engine' and 'Code Generators', regenerate expression_engine/translator_pyspark.py to support the additional DATE_DIFF function and ensure tests are updated accordingly."
+   "Based on system_architecture.md section 'Expression Engine' and 'Code Generators', regenerate expression_engine/translator_pyspark.py to support the additional DATE_DIFF function and ensure tests are updated accordingly."
 3. Run test suite.
 4. Commit updated modules and version snapshots.
 
