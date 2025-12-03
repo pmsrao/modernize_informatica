@@ -26,6 +26,14 @@ echo ""
 # Set PYTHONPATH to include both project root (for ai_agents) and src (for other imports)
 export PYTHONPATH="${PYTHONPATH}:$(pwd):$(pwd)/src"
 
+# Load environment variables from .env file if it exists
+if [ -f .env ]; then
+    export $(cat .env | grep -v '^#' | xargs)
+fi
+
+# Set ENABLE_GRAPH_STORE if not already set (default to true for graph store features)
+export ENABLE_GRAPH_STORE="${ENABLE_GRAPH_STORE:-true}"
+
 # Run from project root
 python -m uvicorn src.api.app:app --reload --port 8000 --host 0.0.0.0
 

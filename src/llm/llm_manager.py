@@ -42,14 +42,25 @@ class LLMManager:
                 logger.info("Local LLM client initialized successfully")
             except Exception as e:
                 logger.warning(f"Failed to initialize Local LLM client: {str(e)}, falling back to OpenAI")
-                self.client = OpenAIClient()
+                try:
+                    self.client = OpenAIClient()
+                    logger.info("OpenAI client initialized successfully (fallback)")
+                except Exception as e2:
+                    logger.error(f"Failed to initialize OpenAI client (fallback): {str(e2)}")
+                    raise
         else:
+            # Default: try OpenAI first, fall back to local if it fails
             try:
                 self.client = OpenAIClient()
                 logger.info("OpenAI client initialized successfully")
             except Exception as e:
-                logger.error(f"Failed to initialize OpenAI client: {str(e)}")
-                raise
+                logger.warning(f"Failed to initialize OpenAI client: {str(e)}, falling back to local LLM")
+                try:
+                    self.client = LocalLLMClient()
+                    logger.info("Local LLM client initialized successfully (fallback)")
+                except Exception as e2:
+                    logger.error(f"Failed to initialize Local LLM client (fallback): {str(e2)}")
+                    raise
 
     def ask(self, prompt: str, use_cache: bool = True) -> str:
         """Send prompt to LLM and return response with optional caching.

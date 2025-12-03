@@ -535,11 +535,11 @@ When a reusable transformation is used in a transformation, it appears as a `MAP
 
 ---
 
-## Neo4j Graph Representation
+## Neo4j Graph Representation (Optional)
 
 ### Why Graph Database?
 
-For **large-scale enterprise migrations** with **thousands of transformations**, a graph database provides:
+The graph database is **optional** but provides powerful capabilities for **large-scale enterprise migrations** with **thousands of transformations**:
 
 1. **Relationship Queries**: Natural representation of data flow
 2. **Cross-Transformation Lineage**: Trace dependencies across entire platform
@@ -547,6 +547,30 @@ For **large-scale enterprise migrations** with **thousands of transformations**,
 4. **Impact Analysis**: "What breaks if I change this table?"
 5. **Knowledge Graph**: Build enterprise-wide data lineage
 6. **Efficient Traversals**: Graph algorithms for dependency analysis
+7. **Assessment Features**: Enables Profiler, Analyzer, Wave Planner, TCO Calculator
+
+### When Graph Store is Required
+
+**Graph store is required for:**
+- Pre-migration assessment (Profiler, Analyzer, Wave Planner)
+- TCO calculator and ROI analysis
+- Complex cross-transformation queries
+- Migration wave planning
+- Pattern discovery across transformations
+
+**Graph store is optional for:**
+- Basic code generation
+- Single transformation analysis
+- File-based workflows
+- Simple parsing and generation
+
+### Configuration
+
+To enable graph store:
+1. Set `ENABLE_GRAPH_STORE=true` in `.env` file
+2. Configure Neo4j connection: `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`
+3. Optionally set `GRAPH_FIRST=true` to use graph as primary storage
+4. See `docs/getting-started/setup_neo4j.md` for Neo4j setup instructions
 
 ### Schema Management
 
@@ -883,54 +907,119 @@ RETURN t.name, t.transformation_name, t.complexity
 ORDER BY t.complexity
 ```
 
-### Benefits for Large-Scale Migrations
+### Benefits for Large-Scale Migrations (When Graph Enabled)
+
+When `ENABLE_GRAPH_STORE=true`, the graph database provides:
 
 1. **Enterprise-Wide Lineage**: See data flow across entire platform
 2. **Impact Analysis**: Understand change impact across transformations
 3. **Pattern Reuse**: Find and reuse similar transformation patterns
-4. **Migration Planning**: Identify dependencies and migration order
+4. **Migration Planning**: Identify dependencies and migration order (via Wave Planner)
 5. **Knowledge Graph**: Build AI-enhanced knowledge base
 6. **Query Performance**: Fast relationship queries vs. scanning files
 7. **Scalability**: Handle millions of nodes and relationships
+8. **Assessment Features**: Profiler, Analyzer, TCO Calculator require graph store
+
+**Note**: These benefits are only available when graph store is enabled. Basic code generation works without Neo4j.
 
 ---
 
 ## Storage and Persistence
 
-### Storage Formats
+### Storage Modes
 
-The canonical model is stored in multiple formats:
+The canonical model supports **dual-mode storage** with flexible configuration:
 
-1. **JSON Files**: 
-   - Location: `test_log/parsed/` and `test_log/parse_ai/` directories
-   - Format: Complete canonical model JSON files
-   - Purpose: Code generation, versioning, human-readable
+#### Mode 1: File-Based (Default)
 
-2. **Neo4j Graph Database**: 
+**Configuration**: `ENABLE_GRAPH_STORE=false` or not set
+
+**Storage**:
+- **JSON Files**: Complete canonical model JSON files
+  - Location: `versions/` directory (via VersionStore)
+  - Also stored in: `test_log/parsed/` and `test_log/parse_ai/` directories
+  - Format: Complete canonical model JSON files
+  - Purpose: Code generation, versioning, human-readable
+
+**Characteristics**:
+- ✅ No external dependencies
+- ✅ Fast to load for code generation
+- ✅ Easy to version control
+- ✅ Human-readable
+- ❌ Limited cross-transformation analysis
+- ❌ No assessment features
+
+#### Mode 2: Graph-Enabled (Optional)
+
+**Configuration**: `ENABLE_GRAPH_STORE=true`
+
+**Storage**:
+1. **JSON Files** (always stored):
+   - Location: `versions/` directory
+   - Purpose: Code generation, versioning, fallback
+
+2. **Neo4j Graph Database** (when enabled):
    - Format: Nodes and relationships
    - Purpose: Querying, analysis, relationship traversal
    - Benefits: Fast queries, cross-transformation analysis, lineage
 
-3. **Version Store**: 
-   - Location: `versions/` directory
-   - Format: JSON files
-   - Purpose: Versioning and history tracking
+**Sub-Modes**:
 
-### Dual Storage Approach
+**A. File-First Mode** (`GRAPH_FIRST=false`):
+- Primary storage: JSON files
+- Graph: Synced for analysis and queries
+- Use case: Code generation with optional analysis
 
-**JSON Files**:
-- Complete canonical model representation
-- Easy to version control
-- Fast to load for code generation
-- Human-readable
+**B. Graph-First Mode** (`GRAPH_FIRST=true`):
+- Primary storage: Neo4j graph
+- JSON: Exported for compatibility
+- Use case: Assessment and analysis workflows
 
-**Neo4j Graph**:
-- Enables complex relationship queries
-- Supports workflow-level analysis
-- Provides lineage traversal
-- Enables impact analysis
+**Characteristics**:
+- ✅ Complex relationship queries
+- ✅ Cross-transformation lineage
+- ✅ Assessment features (Profiler, Analyzer, Wave Planner)
+- ✅ Pattern discovery
+- ✅ Impact analysis
+- ⚠️ Requires Neo4j setup
+- ⚠️ Additional infrastructure
 
-This dual-storage approach provides the best of both worlds: complete fidelity for code generation and powerful querying capabilities for analysis and exploration.
+### Version Store Implementation
+
+The `VersionStore` class (`src/versioning/version_store.py`) handles dual-mode storage:
+
+```python
+# File-based mode (default)
+version_store = VersionStore(path="./versions")
+
+# Graph-enabled, file-first mode
+version_store = VersionStore(
+    path="./versions",
+    graph_store=graph_store,
+    graph_first=False  # JSON primary, graph sync
+)
+
+# Graph-enabled, graph-first mode
+version_store = VersionStore(
+    path="./versions",
+    graph_store=graph_store,
+    graph_first=True  # Graph primary, JSON export
+)
+```
+
+**Storage Behavior**:
+- **File-First**: Saves to JSON, then syncs to graph (if enabled)
+- **Graph-First**: Saves to graph, then exports to JSON
+- **Load Behavior**: Loads from primary storage, falls back to secondary if needed
+
+### Dual Storage Benefits
+
+This dual-storage approach provides:
+- **Complete Fidelity**: JSON preserves full canonical model for code generation
+- **Powerful Querying**: Graph enables complex relationship queries and analysis
+- **Flexibility**: Can operate without Neo4j for basic functionality
+- **Scalability**: Graph handles enterprise-scale migrations efficiently
+- **Resilience**: JSON fallback ensures code generation always works
 
 ### Design Decisions
 
@@ -1163,13 +1252,32 @@ CREATE (task)-[:EXECUTES]->(t)
 
 ## Summary
 
-The Canonical Model provides a standardized, platform-agnostic representation of ETL logic. It is stored in two complementary formats:
+The Canonical Model provides a standardized, platform-agnostic representation of ETL logic. It supports **flexible storage modes**:
 
-1. **JSON Files**: Complete, versioned representation for code generation
-2. **Neo4j Graph**: Queryable graph structure for analysis and exploration
+1. **File-Based Mode (Default)**: JSON files in `versions/` directory
+   - No external dependencies
+   - Fast code generation
+   - Version control friendly
+   - Works for basic modernization workflows
+
+2. **Graph-Enabled Mode (Optional)**: JSON files + Neo4j graph database
+   - Enables assessment features (Profiler, Analyzer, Wave Planner, TCO Calculator)
+   - Complex relationship queries
+   - Cross-transformation lineage
+   - Pattern discovery and impact analysis
+   - Requires Neo4j setup (see `docs/getting-started/setup_neo4j.md`)
+
+**Storage Configuration**:
+- Set `ENABLE_GRAPH_STORE=true` to enable graph features
+- Set `GRAPH_FIRST=true` to use graph as primary storage
+- Default: File-based mode (no Neo4j required)
 
 The model uses generic terminology (Transformations, Pipelines, Tasks) while preserving source platform information through `source_component_type` properties. This enables support for multiple ETL platforms (Informatica, DataStage, Talend, etc.) while maintaining traceability to the original source.
 
-The Neo4j representation uses nodes for components (Transformations, Pipelines, Tasks, etc.) and relationships to represent data flow, containment, and execution. Complex nested structures are stored as JSON strings to preserve completeness while maintaining queryability.
+When graph store is enabled, the Neo4j representation uses nodes for components (Transformations, Pipelines, Tasks, etc.) and relationships to represent data flow, containment, and execution. Complex nested structures are stored as JSON strings to preserve completeness while maintaining queryability.
 
-This dual-storage approach provides the best of both worlds: complete fidelity for code generation and powerful querying capabilities for analysis and exploration.
+This flexible storage approach provides:
+- **Accessibility**: Works without Neo4j for basic functionality
+- **Power**: Graph enables advanced analysis when needed
+- **Resilience**: JSON fallback ensures code generation always works
+- **Scalability**: Graph handles enterprise-scale migrations efficiently

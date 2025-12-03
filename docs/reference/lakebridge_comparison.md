@@ -20,10 +20,12 @@ This document compares **Databricks Lakebridge** (a Databricks Labs toolkit) wit
 
 ### Our Solution
 - **Focus**: Deep Informatica modernization with AI augmentation
-- **Architecture**: Two-phase approach (Source → Canonical Model → Target Code)
+- **Architecture**: Multi-phase approach (Source → Canonical Model → Target Code → Assessment → Reconciliation)
 - **Canonical Model**: Technology-neutral JSON representation as single source of truth
+- **Storage**: Dual-mode (file-based + optional Neo4j graph database)
 - **Target**: PySpark, Delta Live Tables (DLT), SQL, orchestration (Airflow, Prefect, Databricks Workflows)
-- **Approach**: Canonical model-first with graph database storage and AI enhancement
+- **Approach**: Canonical model-first with optional graph database storage and multi-agent AI enhancement
+- **LLM Support**: OpenAI, Azure OpenAI, Local LLM (Ollama/vLLM) with intelligent fallback
 
 ---
 
@@ -34,10 +36,13 @@ This document compares **Databricks Lakebridge** (a Databricks Labs toolkit) wit
 | Aspect | Lakebridge | Our Solution |
 |--------|-----------|--------------|
 | **Intermediate Representation** | Direct conversion (SQL → SQL) | Canonical Model (XML → JSON → Code) |
-| **Storage** | File-based | Graph Database (Neo4j) + Files |
-| **Lineage** | Limited (SQL-based) | Comprehensive (Graph-based, field-level) |
-| **AI Integration** | LLM transpiler (Switch) | Multi-agent AI system (11 specialized agents) |
+| **Storage** | File-based | File-based + Optional Neo4j Graph Database |
+| **Lineage** | Limited (SQL-based) | Comprehensive (Graph-based, field-level) when graph enabled |
+| **AI Integration** | LLM transpiler (Switch) | Multi-agent AI system (11 specialized agents) with fallback |
+| **LLM Providers** | Single provider | Multiple providers (OpenAI, Azure, Local) with intelligent fallback |
 | **Workflow Awareness** | Basic (workflow → session → mapping) | Deep (workflow → worklet → session → mapping with relationships) |
+| **Pre-Migration Assessment** | ✅ Profiler + Analyzer | ✅ Profiler + Analyzer + Wave Planner + TCO Calculator |
+| **Post-Migration Reconciliation** | ✅ Comprehensive | ✅ Comprehensive (Count, Hash, Threshold, Sampling) |
 
 ### 2.2 Informatica Support
 
@@ -52,91 +57,85 @@ This document compares **Databricks Lakebridge** (a Databricks Labs toolkit) wit
 
 ---
 
-## 3. What We Can Learn from Lakebridge
+## 3. Current Feature Comparison
 
 ### 3.1 Assessment Phase (Pre-Migration)
 
-**Lakebridge Strengths:**
+**Lakebridge:**
 - **Profiler**: Connects to source SQL environments, profiles workloads, reports size/complexity/feature usage
 - **Analyzer**: Scans SQL/orchestration code, identifies patterns, estimates migration effort, highlights blockers
 - **TCO Impact Analysis**: Estimates cost savings and runtime impact on Databricks
 
-**Learning Opportunities:**
-1. **Add Pre-Migration Assessment Module**
-   - Profile Informatica repository (mapping count, complexity metrics, feature usage)
-   - Analyze Informatica-specific patterns (lookup cache usage, partitioning strategies, custom functions)
-   - Estimate migration effort and identify blockers before conversion
-   - Generate migration wave recommendations
+**Our Solution:**
+- **Profiler** (`src/assessment/profiler.py`): Profiles Informatica repository stored in Neo4j graph, calculates complexity metrics, feature usage patterns
+- **Analyzer** (`src/assessment/analyzer.py`): Analyzes Informatica-specific patterns (lookup cache usage, partitioning strategies, custom functions), identifies migration blockers
+- **Wave Planner** (`src/assessment/wave_planner.py`): Generates migration wave recommendations based on dependencies and complexity
+- **TCO Calculator** (`src/assessment/tco_calculator.py`): Compares Informatica licensing costs vs. Databricks compute costs, estimates runtime improvements, provides ROI analysis
+- **Report Generator** (`src/assessment/report_generator.py`): Generates comprehensive assessment reports
 
-2. **TCO Calculator**
-   - Compare Informatica licensing costs vs. Databricks compute costs
-   - Estimate runtime improvements based on generated code patterns
-   - Provide ROI analysis for migration
+**Requirements**: Graph store must be enabled (`ENABLE_GRAPH_STORE=true`) for assessment features
 
 ### 3.2 Reconciliation (Post-Migration Validation)
 
-**Lakebridge Strengths:**
+**Lakebridge:**
 - **Reconciler**: Compares source and Databricks datasets
 - **Handles Live Systems**: Works even when both environments are active
 - **Data Validation**: Detects mismatches, missing records, data integrity issues
 - **Aggregate Reconciliation**: Supports count, hash, threshold, and sampling comparisons
 
-**Learning Opportunities:**
-1. **Add Reconciliation Module**
-   - Compare Informatica source data vs. Databricks target data
-   - Support incremental reconciliation during phased migrations
-   - Generate reconciliation reports with drill-down capabilities
-   - Integrate with our generated code to validate transformations
-
-2. **Data Quality Validation**
-   - Extend our existing data quality rules to include reconciliation checks
-   - Automate reconciliation as part of code generation pipeline
+**Our Solution:**
+- **Reconciliation Engine** (`src/reconciliation/recon_engine.py`): Orchestrates reconciliation between Informatica source and Databricks target
+- **Data Comparator** (`src/reconciliation/data_comparator.py`): Supports multiple comparison methods:
+  - Count-based reconciliation
+  - Hash-based reconciliation (row-level)
+  - Threshold-based reconciliation (tolerance levels)
+  - Sampling-based reconciliation (for large datasets)
+- **Live System Support**: Works even when both environments are active
+- **Incremental Reconciliation**: Supports phased migrations
+- **Report Generator** (`src/reconciliation/report_generator.py`): Generates reconciliation reports (JSON, HTML) with drill-down capabilities
+- **Integration**: Integrated with code generation pipeline and API endpoints
 
 ### 3.3 Multi-Platform Support
 
-**Lakebridge Approach:**
+**Lakebridge:**
 - Pluggable transpiler architecture (BladeBridge, Morpheus, Switch)
-- Support for multiple source platforms (SQL Server, Oracle, Teradata, Snowflake, etc.)
+- Support for multiple source platforms (SQL Server, Oracle, Teradata, Snowflake, Netezza, DataStage, Informatica)
 - Unified CLI interface for all platforms
 
-**Learning Opportunities:**
-1. **Extend to Other ETL Platforms**
-   - Add support for DataStage, SSIS, Talend
-   - Reuse canonical model structure (platform-agnostic)
-   - Create platform-specific parsers that output to canonical model
-
-2. **Pluggable Transpiler Architecture**
-   - Make our code generators more modular
-   - Support multiple target platforms beyond Databricks (Snowflake, BigQuery, etc.)
+**Our Solution:**
+- **Current Focus**: Informatica-only (deep specialization)
+- **Architecture**: Canonical model structure is platform-agnostic, enabling future multi-platform support
+- **Future**: Can extend to DataStage, SSIS, Talend using same canonical model architecture
 
 ### 3.4 CLI and Developer Experience
 
-**Lakebridge Strengths:**
+**Lakebridge:**
 - Integrated with Databricks CLI (`databricks labs lakebridge`)
 - Simple, parameterized commands
 - Configuration file support
 - Error logging and reporting
 
-**Learning Opportunities:**
-1. **Improve CLI Experience**
-   - Create a unified CLI command structure
-   - Add configuration file support (YAML/JSON)
-   - Better error reporting and progress indicators
-   - Integration with Databricks CLI (if targeting Databricks)
+**Our Solution:**
+- **Unified CLI** (`src/cli/main.py`): Comprehensive command structure
+- **Configuration Support**: YAML/JSON configuration files (`src/cli/config.py`)
+- **Error Reporting**: Categorized error reporting with recovery suggestions
+- **Progress Indicators**: Visual progress indicators for long-running operations
+- **API Integration**: RESTful API (`src/api/`) for programmatic access
 
 ### 3.5 Validation and Testing
 
-**Lakebridge Approach:**
+**Lakebridge:**
 - SQL validation against Databricks Unity Catalog
 - Error categorization (analysis, parsing, validation, generation)
 - Comprehensive error logging
 
-**Learning Opportunities:**
-1. **Enhanced Validation**
-   - Validate generated PySpark code against Databricks SQL syntax
-   - Test generated code against sample data
-   - Generate unit tests automatically
-   - Integration testing framework
+**Our Solution:**
+- **Databricks Validator** (`src/validation/databricks_validator.py`): Validates generated code against Databricks Unity Catalog and Delta Lake
+- **Test Data Validator** (`src/validation/test_data_validator.py`): Validates generated code against sample data
+- **Automated Test Generation**: Generates unit tests (PySpark, SQL) automatically
+- **Integration Testing Framework** (`src/testing/integration_test_framework.py`): End-to-end testing capabilities
+- **Error Categorization**: 28 error categories with 5 severity levels
+- **Error Recovery**: Automatic recovery strategies (retry, skip, use defaults)
 
 ---
 
@@ -154,40 +153,48 @@ This document compares **Databricks Lakebridge** (a Databricks Labs toolkit) wit
 - Direct conversion approach means regenerating requires re-parsing source
 - No intermediate representation for cross-platform analysis
 
-### 4.2 Graph Database Storage
+### 4.2 Graph Database Storage (Optional)
 
 **Our Advantage:**
-- **Neo4j Integration**: Complete graph storage of components and relationships
-- **Cross-Mapping Lineage**: Query relationships across mappings, workflows, sessions
-- **Impact Analysis**: Understand downstream effects of changes
-- **Pattern Discovery**: Find reusable patterns across mappings
+- **Neo4j Integration** (when `ENABLE_GRAPH_STORE=true`): Complete graph storage of components and relationships
+- **Dual-Mode Storage**: Can operate in file-based mode (default) or graph-first mode
+- **Cross-Mapping Lineage**: Query relationships across mappings, workflows, sessions (when graph enabled)
+- **Impact Analysis**: Understand downstream effects of changes (when graph enabled)
+- **Pattern Discovery**: Find reusable patterns across mappings (when graph enabled)
 - **Rich Metadata**: Store file metadata, code metadata, quality scores
+- **Assessment Features**: Profiler, Analyzer, Wave Planner require graph store
 
 **Lakebridge Limitation:**
 - File-based storage only
 - Limited cross-mapping analysis capabilities
 
+**Note**: Our solution works without Neo4j for basic functionality, but graph store enables advanced features
+
 ### 4.3 AI and Intelligence Layer
 
 **Our Advantage:**
-- **11 Specialized AI Agents**:
-  - Rule Explainer Agent
-  - Mapping Summary Agent
-  - Risk Detection Agent
-  - Transformation Suggestion Agent
-  - Code Fix Agent
-  - Impact Analysis Agent
-  - Mapping Reconstruction Agent
-  - Workflow Simulation Agent
-  - Model Enhancement Agent
-  - Model Validation Agent
-  - Code Review Agent
+- **11 Specialized AI Agents** (`ai_agents/`):
+  - Rule Explainer Agent: Explains Informatica expressions in business terms
+  - Mapping Summary Agent: Generates comprehensive narrative summaries
+  - Risk Detection Agent: Identifies potential issues and risks
+  - Transformation Suggestion Agent: Suggests optimizations and modernizations
+  - Code Fix Agent: Automatically fixes errors in generated code
+  - Impact Analysis Agent: Analyzes downstream impact of changes
+  - Mapping Reconstruction Agent: Reconstructs mappings from partial information
+  - Workflow Simulation Agent: Simulates execution and identifies bottlenecks
+  - Model Enhancement Agent: Enhances canonical models with AI insights
+  - Model Validation Agent: Validates canonical models
+  - Code Review Agent: Reviews and improves generated code
+- **LLM Provider Support**: OpenAI, Azure OpenAI, Local LLM (Ollama/vLLM)
+- **Intelligent Fallback**: OpenAI → Local LLM → Error (graceful degradation)
 - **Deep Reasoning**: Agents analyze canonical model structure, not just code
 - **Proactive Suggestions**: AI suggests optimizations, identifies risks, explains logic
+- **Response Caching**: LLM responses are cached for performance
 
 **Lakebridge Limitation:**
 - Single LLM transpiler (Switch) for code conversion
 - Limited AI reasoning beyond code generation
+- Single provider support
 
 ### 4.4 Informatica-Specific Deep Understanding
 
@@ -271,117 +278,88 @@ This document compares **Databricks Lakebridge** (a Databricks Labs toolkit) wit
 
 ---
 
-## 6. Implementation Status
+## 6. Current Architecture Details
 
-### 6.1 Completed (High Priority) ✅
+### 6.1 Storage Architecture
 
-1. **Pre-Migration Assessment Module** ✅ **IMPLEMENTED**
-   - ✅ Profile Informatica repository
-   - ✅ Analyze complexity and estimate effort
-   - ✅ Identify migration blockers
-   - ✅ Generate migration wave recommendations
-   - ✅ TCO calculator with ROI analysis
-   - ✅ Runtime improvement estimation
+**Our Solution:**
+- **File-Based Mode** (Default): JSON files in `versions/` directory
+- **Graph-First Mode** (Optional): Neo4j as primary storage with JSON fallback
+- **Configuration**: Set `ENABLE_GRAPH_STORE=true` and `GRAPH_FIRST=true` in `.env`
+- **Graph Store Features**: Requires Neo4j 5.15+ (see `docs/getting-started/setup_neo4j.md`)
 
-2. **Post-Migration Reconciliation** ✅ **IMPLEMENTED**
-   - ✅ Compare source vs. target data (count, hash, threshold, sampling methods)
-   - ✅ Support incremental reconciliation
-   - ✅ Generate reconciliation reports (JSON, HTML)
-   - ✅ Integrate with code generation pipeline
-   - ✅ API endpoints and CLI commands
+### 6.2 LLM Configuration
 
-3. **CLI Experience** ✅ **IMPLEMENTED**
-   - ✅ Unified command structure
-   - ✅ Configuration file support (YAML/JSON)
-   - ✅ Better error reporting
-   - ✅ Progress indicators
+**Our Solution:**
+- **Multiple Providers**: OpenAI (default), Azure OpenAI, Local LLM (Ollama/vLLM)
+- **Configuration**: Set `LLM_PROVIDER` in `.env` file
+- **Fallback Logic**: 
+  - OpenAI → Local LLM (if OpenAI fails)
+  - Local LLM → OpenAI (if Local fails)
+  - Azure → OpenAI (if Azure fails)
+- **Local LLM**: Default Ollama at `http://localhost:11434` with model `llama3`
+- **Caching**: LLM responses are cached for performance
 
-### 6.2 Completed (Medium Priority) ✅
+### 6.3 Component Structure
 
-4. **Enhanced Validation** ✅ **IMPLEMENTED**
-   - ✅ Validate generated code against Databricks syntax
-   - ✅ Test data validation
-   - ✅ Automated test generation (PySpark, SQL, Integration)
-   - ✅ Integration testing framework
-   - ✅ Databricks-specific validation (Unity Catalog, Delta Lake)
-
-### 6.3 Completed (Low Priority) ✅
-
-5. **Code Quality Improvements** ✅ **IMPLEMENTED**
-   - ✅ Enhanced error categorization (ErrorCategory enum with 28 categories)
-   - ✅ Error severity levels (Critical, High, Medium, Low, Info)
-   - ✅ Recovery strategies for each error category
-   - ✅ Enhanced error logging with automatic categorization
-   - ✅ Better error recovery mechanisms (retry with backoff, skip on error, use defaults)
-   - ✅ Error statistics and reporting
-   - ✅ Decorators for automatic error handling (@retry_on_error, @skip_on_error)
-   - ✅ Error report generation with recovery suggestions
-
-6. **Documentation Improvements** ✅ **IMPLEMENTED**
-   - ✅ Migration guides (comprehensive step-by-step migration instructions)
-   - ✅ Error handling guide (error categorization and recovery documentation)
-   - ✅ Testing and validation guide (testing capabilities documentation)
-   - ✅ Best practices documentation
-   - ⚠️ Video tutorials (future enhancement)
-   - ⚠️ Example use cases (future enhancement)
-
-### 6.4 Future Enhancements
-
-7. **Extend Platform Support**
-   - Add DataStage, SSIS, Talend parsers
-   - Reuse canonical model structure
-   - Support multiple target platforms
-
-8. **Performance Optimization**
-   - Batch processing improvements
-   - Parallel code generation
-   - Caching strategies
+**Our Solution:**
+- **Parsers**: `src/parser/` (Mapping, Workflow, Session, Worklet, Mapplet)
+- **Normalizer**: `src/normalizer/` (Canonical model creation, lineage, SCD detection)
+- **Translator**: `src/translator/` (AST-based expression translation)
+- **Generators**: `src/generators/` (PySpark, DLT, SQL, Specs, Tests, Orchestration)
+- **Graph Store**: `src/graph/` (Neo4j integration, queries, sync)
+- **Assessment**: `src/assessment/` (Profiler, Analyzer, Wave Planner, TCO Calculator)
+- **Reconciliation**: `src/reconciliation/` (Data comparison, reports)
+- **Validation**: `src/validation/` (Databricks validation, test data validation)
+- **AI Agents**: `ai_agents/` (11 specialized agents)
+- **LLM**: `src/llm/` (Manager, clients, prompt templates)
+- **API**: `src/api/` (FastAPI REST endpoints)
+- **CLI**: `src/cli/` (Unified command interface)
 
 ---
 
-## 7. Strategic Recommendations
+## 7. Configuration and Setup
 
-### 7.1 Completed Actions ✅
+### 7.1 Environment Configuration
 
-1. **Assessment Module** ✅ **COMPLETE** (High Value, Medium Effort)
-   - ✅ Leverage graph database to profile Informatica repository
-   - ✅ Generate complexity metrics and migration estimates
-   - ✅ Identify patterns and blockers
-   - ✅ TCO calculator and ROI analysis
-   - ✅ Migration wave planning
+**Our Solution** (via `.env` file):
+```bash
+# LLM Configuration
+LLM_PROVIDER=local  # Options: openai, azure, local
+OPENAI_API_KEY=sk-...  # For OpenAI
+OLLAMA_URL=http://localhost:11434  # For local LLM
+OLLAMA_MODEL=llama3  # For local LLM
 
-2. **Reconciliation Module** ✅ **COMPLETE** (High Value, High Effort)
-   - ✅ Build data comparison framework
-   - ✅ Integrate with generated code
-   - ✅ Support phased migration validation
-   - ✅ Multiple comparison methods (count, hash, threshold, sampling)
+# Neo4j Configuration (optional)
+ENABLE_GRAPH_STORE=true
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=password
+GRAPH_FIRST=false  # Set to true for graph-first mode
 
-3. **CLI Improvements** ✅ **COMPLETE** (Medium Value, Low Effort)
-   - ✅ Better command structure
-   - ✅ Configuration file support
-   - ✅ Enhanced error reporting
-   - ✅ Progress indicators
+# API Configuration
+API_HOST=0.0.0.0
+API_PORT=8000
+```
 
-### 7.2 Future Actions
+### 7.2 Setup Requirements
 
-### 7.2 Long-Term Vision
+**Basic Operation** (No external dependencies):
+- Python 3.10+
+- Dependencies from `requirements.txt`
+- File-based storage (default)
 
-1. **Multi-Platform Support**
-   - Extend canonical model to support other ETL platforms
-   - Create platform-specific parsers
-   - Maintain single code generation pipeline
+**With LLM Features**:
+- OpenAI API key OR
+- Local Ollama server running
 
-2. **Enterprise Features**
-   - Role-based access control
-   - Audit logging
-   - Integration with CI/CD pipelines
-   - Enterprise-grade error handling
+**With Graph Store Features**:
+- Neo4j 5.15+ (Docker recommended)
+- See `docs/getting-started/setup_neo4j.md` for setup
 
-3. **Community and Ecosystem**
-   - Open-source components
-   - Plugin architecture
-   - Community contributions
-   - Documentation and tutorials
+**With Assessment Features**:
+- Requires graph store to be enabled
+- Neo4j must be running and accessible
 
 ---
 
@@ -395,58 +373,78 @@ This document compares **Databricks Lakebridge** (a Databricks Labs toolkit) wit
 4. **Informatica Depth**: Deep understanding of Informatica-specific features
 5. **User Experience**: Rich web UI for visualization and exploration
 
-### Lakebridge's Strengths We Adopted ✅
+### Feature Parity with Lakebridge
 
-1. **Assessment Phase**: ✅ Pre-migration profiling and analysis - **IMPLEMENTED**
-2. **Reconciliation**: ✅ Post-migration data validation - **IMPLEMENTED**
-3. **CLI Experience**: ✅ Better developer experience - **IMPLEMENTED**
-4. **Multi-Platform**: ⚠️ Extend beyond Informatica - **FUTURE ENHANCEMENT**
+**Assessment Phase**: ✅ Pre-migration profiling and analysis (Profiler, Analyzer, Wave Planner, TCO Calculator)
+**Reconciliation**: ✅ Post-migration data validation (Count, Hash, Threshold, Sampling methods)
+**CLI Experience**: ✅ Unified CLI with configuration support
+**Validation**: ✅ Comprehensive validation (Databricks, test data, automated tests)
+**Multi-Platform**: ⚠️ Informatica-only (canonical model architecture enables future extension)
 
 ### Competitive Positioning
 
 **Our Solution is Superior For:**
 - Deep Informatica modernization projects
-- Organizations needing AI-augmented analysis
+- Organizations needing AI-augmented analysis (11 specialized agents)
 - Complex workflow orchestration requirements
-- Field-level lineage and impact analysis
-- Rich visualization and exploration
-- **Pre-migration assessment with TCO analysis** ✅
-- **Post-migration reconciliation** ✅
-- **Comprehensive testing and validation** ✅
+- Field-level lineage and impact analysis (when graph enabled)
+- Rich visualization and exploration (web UI)
+- Pre-migration assessment with TCO analysis (requires graph store)
+- Post-migration reconciliation
+- Comprehensive testing and validation
+- Multi-provider LLM support with fallback
+- Canonical model architecture for regeneration
 
 **Lakebridge is Superior For:**
-- Multi-platform migrations (SQL Server, Oracle, etc.)
+- Multi-platform migrations (SQL Server, Oracle, Teradata, Snowflake, etc.)
 - Quick SQL-to-SQL conversions
 - Organizations already using Databricks CLI
+- Simple file-based workflows without graph database requirements
 
-### Current Status
+### Current Capabilities Summary
 
-**Our solution now includes:**
-1. ✅ **Assessment and reconciliation modules** - Complete implementation
-2. ✅ **Enhanced CLI** - Unified CLI with configuration support
-3. ✅ **Comprehensive validation** - Databricks validation, test data validation, automated test generation
-4. ✅ **TCO and ROI analysis** - Cost comparison and runtime estimation
-5. ✅ **Integration testing framework** - End-to-end testing capabilities
-6. ✅ **Error categorization and recovery** - Comprehensive error handling with recovery strategies
-7. ✅ **Enhanced error logging** - Categorized error logging with recovery suggestions
-8. ✅ **Migration guides** - Step-by-step migration documentation
+**Our solution includes:**
 
-**Error Handling Features:**
-- ✅ 28 error categories (Analysis, Parsing, Validation, Generation, Translation, System, Configuration)
-- ✅ 5 severity levels (Critical, High, Medium, Low, Info)
-- ✅ Automatic recovery strategies (retry with backoff, skip on error, use defaults)
-- ✅ Error statistics and reporting
-- ✅ Decorators for automatic error handling (@retry_on_error, @skip_on_error)
+1. **Core Modernization Pipeline**
+   - Comprehensive Informatica XML parsing (Workflow, Worklet, Session, Mapping, Mapplet)
+   - Canonical model creation with lineage and SCD detection
+   - AST-based expression translation (100+ Informatica functions)
+   - Multi-format code generation (PySpark, DLT, SQL, Specs, Tests, Orchestration)
 
-**Our solution maintains:**
-- Focus on Informatica depth and AI intelligence (our differentiators)
-- Canonical model architecture for extensibility
-- Graph database for rich relationships and lineage
-- Rich web UI for visualization and exploration
+2. **Assessment and Analysis** (requires graph store)
+   - Pre-migration profiling and complexity analysis
+   - Migration blocker identification
+   - Migration wave planning
+   - TCO calculator with ROI analysis
 
-**Future enhancements:**
-- Extend to other ETL platforms using canonical model architecture
-- Multi-platform support (DataStage, SSIS, Talend)
+3. **Reconciliation and Validation**
+   - Post-migration data reconciliation (count, hash, threshold, sampling)
+   - Databricks code validation
+   - Automated test generation
+   - Integration testing framework
+
+4. **AI and Intelligence**
+   - 11 specialized AI agents
+   - Multi-provider LLM support with fallback
+   - Response caching for performance
+
+5. **Storage and Infrastructure**
+   - File-based storage (default)
+   - Optional Neo4j graph database
+   - Dual-mode operation (file-first or graph-first)
+
+6. **Developer Experience**
+   - Unified CLI with configuration support
+   - RESTful API for programmatic access
+   - Rich web UI for visualization
+   - Comprehensive error handling and recovery
+
+**Differentiators:**
+- Deep Informatica specialization vs. multi-platform breadth
+- Canonical model architecture enables regeneration and extensibility
+- Graph database enables advanced analysis (when enabled)
+- Multi-agent AI system vs. single LLM transpiler
+- Rich web UI vs. CLI-only
 
 ---
 
@@ -482,25 +480,33 @@ output/
   └── workflow.json
 ```
 
-**Our Solution**: Graph database + files
+**Our Solution**: Dual-mode storage (file-based default, optional graph)
 ```
-Neo4j Graph:
-  - Workflow nodes
-  - Session nodes
-  - Mapping nodes
-  - Relationships (CONTAINS, EXECUTES, etc.)
-  - Metadata (file paths, quality scores)
-
-Filesystem:
+File-Based Mode (Default):
   - Generated code files
-  - Canonical model JSON (backup)
+  - Canonical model JSON in versions/
+  - No external dependencies
+
+Graph-First Mode (Optional, when ENABLE_GRAPH_STORE=true):
+  Neo4j Graph:
+    - Workflow nodes
+    - Session nodes
+    - Mapping nodes
+    - Relationships (CONTAINS, EXECUTES, etc.)
+    - Metadata (file paths, quality scores)
+  
+  Filesystem:
+    - Generated code files
+    - Canonical model JSON (backup)
 ```
 
 **Advantage**: Our approach enables:
-- Complex relationship queries
-- Impact analysis
-- Pattern discovery
-- Rich metadata storage
+- Works without Neo4j for basic functionality
+- Optional graph enables complex relationship queries
+- Impact analysis (when graph enabled)
+- Pattern discovery (when graph enabled)
+- Rich metadata storage (when graph enabled)
+- Assessment features require graph store
 
 ### A.3 AI Integration Comparison
 
@@ -508,20 +514,25 @@ Filesystem:
 - Converts SQL/ETL to Databricks notebooks
 - Limited reasoning beyond conversion
 
-**Our Solution**: Multi-agent AI system
+**Our Solution**: Multi-agent AI system with multi-provider LLM support
 - 11 specialized agents for different tasks
 - Deep analysis of canonical model
 - Proactive suggestions and optimizations
 - Code review and fixing
+- Multiple LLM providers (OpenAI, Azure, Local) with intelligent fallback
+- Response caching for performance
 
 **Advantage**: Our approach provides:
 - Comprehensive analysis
 - Proactive recommendations
 - Code quality improvements
 - Business logic explanation
+- Resilience through fallback mechanisms
+- Works without external LLM (local mode)
 
 ---
 
 *Document created: 2025-12-02*
-*Last updated: 2025-12-02*
+*Last updated: 2025-12-03*
+*Status: Current state comparison - reflects actual implementation as of December 2025*
 

@@ -132,7 +132,7 @@ This separation ensures that:
 **Purpose**: Provide unified interface to multiple LLM providers
 
 **Components**:
-- `llm_manager.py`: Main LLM manager that routes requests
+- `llm_manager.py`: Main LLM manager that routes requests with intelligent fallback
 - `openai_client.py`: OpenAI API client
 - `azure_openai_client.py`: Azure OpenAI client
 - `local_llm_client.py`: Local LLM client (Ollama, vLLM, mock)
@@ -143,7 +143,16 @@ This separation ensures that:
 - Handle retry logic and error handling
 - Manage prompt templates
 - Support multiple providers (OpenAI, Azure, Local)
-- Provide fallback mechanisms
+- Provide intelligent fallback mechanisms:
+  - OpenAI → Local LLM (if OpenAI fails)
+  - Local LLM → OpenAI (if Local fails)
+  - Azure → OpenAI (if Azure fails)
+- Enable response caching for performance
+
+**Configuration**:
+- Set `LLM_PROVIDER` environment variable: `openai`, `azure`, or `local`
+- For local: Configure `OLLAMA_URL` (default: `http://localhost:11434`) and `OLLAMA_MODEL` (default: `llama3`)
+- See `docs/getting-started/setup_neo4j.md` for LLM configuration details
 
 **Output**: LLM responses (text/JSON)
 
@@ -180,7 +189,36 @@ This separation ensures that:
 
 ### Infrastructure Components
 
-#### 8. **API Layer** (`src/api/`)
+#### 8. **Graph Store** (`src/graph/`)
+**Purpose**: Neo4j-based graph storage for canonical models and lineage
+
+**Components**:
+- `graph_store.py`: Neo4j integration for storing mappings, transformations, and lineage
+- `graph_queries.py`: High-level query interface for graph operations
+- `graph_sync.py`: Synchronization between JSON version store and graph
+
+**Responsibilities**:
+- Store canonical models as graph nodes and relationships
+- Build and maintain data lineage graphs
+- Enable graph-first architecture (optional, configurable)
+- Support complex queries (migration order, readiness assessment, pattern detection)
+- Provide graph-based assessment and analysis capabilities
+
+**Configuration**:
+- Set `ENABLE_GRAPH_STORE=true` in `.env` to enable graph features
+- Configure Neo4j connection: `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`
+- Set `GRAPH_FIRST=true` to prefer graph store over file-based storage
+- See `docs/getting-started/setup_neo4j.md` for Neo4j setup instructions
+
+**Features**:
+- Stores mappings, transformations, sources, targets as nodes
+- Builds relationships: lineage, dependencies, data flow
+- Supports assessment: migration readiness, complexity analysis, wave planning
+- Enables graph-based queries and pattern detection
+
+---
+
+#### 9. **API Layer** (`src/api/`)
 **Purpose**: RESTful API for programmatic access
 
 **Components**:
@@ -188,6 +226,7 @@ This separation ensures that:
 - `routes.py`: API endpoint definitions
 - `file_manager.py`: File upload and management
 - `models.py`: Request/response models
+- `hierarchy_builder.py`: Builds component hierarchies
 
 **Responsibilities**:
 - Expose all functionality via REST API
@@ -195,6 +234,7 @@ This separation ensures that:
 - Orchestrate parsing, generation, and AI analysis
 - Provide error handling and validation
 - Support versioning and caching
+- Integrate with graph store when enabled
 
 **Endpoints**:
 - `/upload`: File upload
@@ -202,31 +242,60 @@ This separation ensures that:
 - `/generate/*`: Code generation endpoints
 - `/analyze/*`: AI analysis endpoints
 - `/dag/*`: DAG building endpoints
+- `/graph/*`: Graph store endpoints (when enabled)
 
 ---
 
-#### 9. **Version Store** (`src/versioning/`)
+#### 10. **Version Store** (`src/versioning/`)
 **Purpose**: Store and version canonical models and generated artifacts
 
 **Components**:
-- `version_store.py`: Version storage implementation
+- `version_store.py`: Version storage implementation with optional graph integration
 
 **Responsibilities**:
-- Store canonical models
+- Store canonical models (JSON-based or graph-based)
 - Version generated artifacts
 - Enable regeneration from stored models
 - Support rollback and comparison
+- Integrate with graph store when `GRAPH_FIRST=true`
+
+**Storage Modes**:
+- **File-based**: Default mode, stores JSON files in `versions/` directory
+- **Graph-first**: When `GRAPH_FIRST=true`, uses Neo4j as primary storage with JSON fallback
 
 ---
 
-#### 10. **Utilities** (`src/utils/`)
+#### 11. **Assessment Components** (`src/assessment/`)
+**Purpose**: Pre-migration assessment and analysis
+
+**Components**:
+- `profiler.py`: Profiles mappings and transformations
+- `analyzer.py`: Analyzes patterns and migration blockers
+- `wave_planner.py`: Plans migration waves
+- `report_generator.py`: Generates assessment reports
+- `tco_calculator.py`: Calculates total cost of ownership
+
+**Responsibilities**:
+- Analyze migration complexity
+- Identify migration blockers and risks
+- Plan migration waves and dependencies
+- Generate comprehensive assessment reports
+- Calculate TCO and effort estimates
+
+**Requirements**: Requires graph store to be enabled (`ENABLE_GRAPH_STORE=true`)
+
+---
+
+#### 12. **Utilities** (`src/utils/`)
 **Purpose**: Shared utilities and helpers
 
 **Components**:
-- `logger.py`: Logging infrastructure
+- `logger.py`: Structured logging infrastructure (JSON/text format)
 - `exceptions.py`: Custom exception classes
 - `file_utils.py`: File operations
 - `validators.py`: Validation utilities
+- `error_categorizer.py`: Categorizes and handles errors
+- `error_recovery.py`: Error recovery mechanisms
 
 ---
 
@@ -266,16 +335,21 @@ SCDDetector detects Slowly Changing Dimensions
     ↓
 Canonical Model created
     ↓
-Stored in Version Store
+Stored in Version Store (file-based or graph-based)
+    ↓
+[Optional] Stored in Graph Store (if ENABLE_GRAPH_STORE=true)
 ```
 
 **Components Involved**:
 - `MappingNormalizer`: Orchestrates normalization
 - `LineageEngine`: Builds lineage graphs
 - `SCDDetector`: Detects SCD patterns
-- `VersionStore`: Stores canonical model
+- `VersionStore`: Stores canonical model (file or graph)
+- `GraphStore`: Stores in Neo4j (if enabled)
 
 **Output**: Canonical Model (single source of truth)
+- File-based: JSON files in `versions/` directory
+- Graph-based: Neo4j nodes and relationships (if enabled)
 
 ---
 
@@ -331,6 +405,8 @@ Canonical Model
     ↓
 AgentOrchestrator coordinates agents
     ↓
+LLMManager (with fallback: OpenAI → Local LLM)
+    ↓
 ┌─────────────────────────────────────┐
 │  Core Agents (can run in parallel)  │
 ├─────────────────────────────────────┤
@@ -347,9 +423,15 @@ Aggregated analysis results
 
 **Components Involved**:
 - `AgentOrchestrator`: Coordinates agents
-- `LLMManager`: Provides LLM access
+- `LLMManager`: Provides LLM access with intelligent fallback
 - All AI Agents: Perform analysis
 - `PromptTemplates`: Provide prompts
+
+**LLM Fallback Logic**:
+- Primary provider fails → Falls back to alternative
+- OpenAI fails → Local LLM (Ollama)
+- Local LLM fails → OpenAI (if configured)
+- All fail → Error with graceful handling
 
 **Output**: Analysis results (explanations, summaries, risks, suggestions)
 
@@ -381,10 +463,39 @@ DAGVisualizer creates visualizations
 
 ---
 
-### Stage 7: API Response and Delivery
+### Stage 7: Assessment and Analysis (Optional, requires graph store)
 
 ```
-All results (canonical model, code, analysis, DAG)
+Canonical Model (in Graph Store)
+    ↓
+Profiler analyzes complexity
+    ↓
+Analyzer identifies patterns and blockers
+    ↓
+WavePlanner creates migration waves
+    ↓
+ReportGenerator creates assessment report
+    ↓
+TCOCalculator estimates costs
+```
+
+**Components Involved**:
+- `Profiler`: Profiles mappings and transformations
+- `Analyzer`: Analyzes patterns and blockers
+- `WavePlanner`: Plans migration waves
+- `ReportGenerator`: Generates reports
+- `TCOCalculator`: Calculates costs
+
+**Requirements**: Graph store must be enabled (`ENABLE_GRAPH_STORE=true`)
+
+**Output**: Assessment reports, migration waves, TCO estimates
+
+---
+
+### Stage 8: API Response and Delivery
+
+```
+All results (canonical model, code, analysis, DAG, assessment)
     ↓
 API routes format responses
     ↓
@@ -396,7 +507,8 @@ Frontend displays results
 **Components Involved**:
 - `API Routes`: Format and return responses
 - `FileManager`: Serve files if needed
-- `VersionStore`: Retrieve stored data
+- `VersionStore`: Retrieve stored data (file or graph)
+- `GraphQueries`: Query graph store (if enabled)
 
 **Output**: JSON API responses
 
@@ -505,8 +617,14 @@ graph TB
 3. **Modularity**: Each component is independent and replaceable
 4. **Extensibility**: Easy to add new parsers, generators, or agents
 5. **LLM-Optional**: System works without LLM, but is enhanced with it
-6. **Idempotency**: All outputs can be regenerated from canonical model
-7. **Error Handling**: Graceful degradation at each layer
+   - Intelligent fallback: OpenAI → Local LLM → Error
+   - Local LLM support via Ollama (default) or vLLM
+6. **Graph-Optional**: System works without Neo4j, but graph store enables advanced features
+   - Assessment, wave planning, and complex queries require graph store
+   - Can operate in file-based mode for basic functionality
+7. **Idempotency**: All outputs can be regenerated from canonical model
+8. **Error Handling**: Graceful degradation at each layer
+9. **Import Path Consistency**: Uses `from module import ...` pattern (not `from src.module`) when `src` is in PYTHONPATH
 
 ---
 

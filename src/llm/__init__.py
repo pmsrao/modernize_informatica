@@ -1,9 +1,9 @@
 """LLM integration layer."""
-from llm.llm_manager import LLMManager
-from llm.openai_client import OpenAIClient
-from llm.azure_openai_client import AzureOpenAIClient
-from llm.local_llm_client import LocalLLMClient
-from llm.prompt_templates import (
+from .llm_manager import LLMManager
+from .openai_client import OpenAIClient
+from .azure_openai_client import AzureOpenAIClient
+from .local_llm_client import LocalLLMClient
+from .prompt_templates import (
     RULE_EXPLANATION_PROMPT,
     MAPPING_SUMMARY_PROMPT,
     RISK_ANALYSIS_PROMPT,

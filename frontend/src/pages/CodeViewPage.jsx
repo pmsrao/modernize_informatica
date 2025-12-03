@@ -373,22 +373,22 @@ export default function CodeViewPage() {
                           </div>
                         ) : (
                           transformations.map((transformation, tIdx) => {
-                            const transformationName = transformation.transformation_name || transformation.mapping_name || transformation.name;
+                          const transformationName = transformation.transformation_name || transformation.mapping_name || transformation.name;
                             const isSelected = selectedMapping === transformationName;
-                            return (
-                              <div
-                                key={tIdx}
-                                onClick={() => handleMappingSelect(transformation)}
-                                style={{
-                                  padding: '8px',
-                                  marginBottom: '5px',
+                          return (
+                            <div
+                              key={tIdx}
+                              onClick={() => handleMappingSelect(transformation)}
+                              style={{
+                                padding: '8px',
+                                marginBottom: '5px',
                                   background: isSelected ? '#E3F2FD' : 'white',
                                   border: isSelected ? '2px solid #4A90E2' : '1px solid #ddd',
-                                  borderRadius: '4px',
-                                  cursor: 'pointer',
-                                  fontSize: '12px',
-                                  display: 'flex',
-                                  alignItems: 'center',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontSize: '12px',
+                                display: 'flex',
+                                alignItems: 'center',
                                   gap: '6px',
                                   transition: 'all 0.2s'
                                 }}
@@ -401,12 +401,12 @@ export default function CodeViewPage() {
                                   if (!isSelected) {
                                     e.currentTarget.style.background = 'white';
                                   }
-                                }}
-                              >
-                                <span>📋</span>
+                              }}
+                            >
+                              <span>📋</span>
                                 <span style={{ flex: 1 }}>{transformationName || 'Unknown'}</span>
-                              </div>
-                            );
+                            </div>
+                          );
                           })
                         )}
                       </div>

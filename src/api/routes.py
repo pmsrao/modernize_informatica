@@ -18,20 +18,20 @@ from .models import (
     ErrorResponse
 )
 from .file_manager import file_manager
-from parser import MappingParser, WorkflowParser, SessionParser, WorkletParser, MappletParser
-from normalizer import MappingNormalizer
-from generators import (
+from src.parser import MappingParser, WorkflowParser, SessionParser, WorkletParser, MappletParser
+from src.normalizer import MappingNormalizer
+from src.generators import (
     PySparkGenerator, DLTGenerator, SQLGenerator, SpecGenerator,
     OrchestrationGenerator, CodeQualityChecker
 )
-from dag import DAGBuilder, DAGVisualizer
-from versioning.version_store import VersionStore
-from config import settings
-from utils.exceptions import (
+from src.dag import DAGBuilder, DAGVisualizer
+from src.versioning.version_store import VersionStore
+from src.config import settings
+from src.utils.exceptions import (
     ParsingError, TranslationError, GenerationError, ValidationError,
     ModernizationError
 )
-from utils.logger import get_logger
+from src.utils.logger import get_logger
 
 # Import ai_agents with fallback for path issues
 try:
@@ -2258,12 +2258,12 @@ async def get_code_file(file_path: str):
                 full_path = (project_root / "test_log" / "generated_ai" / decoded_path).resolve()
                 if not full_path.exists():
                     full_path = (project_root / "test_log" / "generated" / decoded_path).resolve()
-            
-            if not str(full_path).startswith(str(project_root.resolve())):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Access denied: File path outside project directory"
-                )
+        
+        if not str(full_path).startswith(str(project_root.resolve())):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: File path outside project directory"
+            )
         
         if not full_path.exists():
             raise HTTPException(
