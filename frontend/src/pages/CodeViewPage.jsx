@@ -72,6 +72,16 @@ export default function CodeViewPage() {
       if (result.success) {
         // API returns { success: true, workflow: {...} }
         const workflow = result.workflow || result;
+        console.log('Workflow structure:', workflow);
+        console.log('Tasks/Sessions:', workflow.tasks || workflow.sessions);
+        
+        // Log transformation details for debugging
+        const tasks = workflow.tasks || workflow.sessions || [];
+        tasks.forEach((task, idx) => {
+          const transformations = task.transformations || task.mappings || [];
+          console.log(`Task ${idx} (${task.name}): ${transformations.length} transformation(s)`, transformations);
+        });
+        
         setWorkflowStructure(workflow);
         setSelectedSession(null);
         setSelectedMapping(null);
@@ -80,10 +90,12 @@ export default function CodeViewPage() {
         setCodeContent('');
       } else {
         setError(result.message || 'Failed to load workflow structure');
+        setWorkflowStructure(null);
       }
     } catch (err) {
       console.error('Error loading workflow structure:', err);
       setError(err.message || 'Failed to load workflow structure');
+      setWorkflowStructure(null);
     } finally {
       setLoadingCode(false);
     }
@@ -91,32 +103,60 @@ export default function CodeViewPage() {
 
   const loadCodeFiles = async (mappingName) => {
     setLoadingCode(true);
+    setError(null);
     try {
       const result = await apiClient.getMappingCode(mappingName);
+      console.log('Code files result for', mappingName, ':', result);
       if (result.success) {
-        setCodeFiles(result.code_files || []);
-        if (result.code_files && result.code_files.length > 0) {
-          setSelectedCodeFile(result.code_files[0]);
+        const files = result.code_files || [];
+        console.log('Found', files.length, 'code file(s)');
+        setCodeFiles(files);
+        if (files.length > 0) {
+          setSelectedCodeFile(files[0]);
+        } else {
+          setSelectedCodeFile(null);
+          setCodeContent('');
+          // Show helpful message if no files found
+          console.warn(`No code files found for mapping: ${mappingName}`);
         }
+      } else {
+        setError(result.message || 'Failed to load code files');
+        setCodeFiles([]);
+        setSelectedCodeFile(null);
       }
     } catch (err) {
       console.error('Error loading code files:', err);
+      setError(err.message || 'Failed to load code files');
+      setCodeFiles([]);
+      setSelectedCodeFile(null);
     } finally {
       setLoadingCode(false);
     }
   };
 
   const loadCodeContent = async (filePath) => {
+    if (!filePath) {
+      setCodeContent('');
+      return;
+    }
+    
     setLoadingCode(true);
+    setError(null);
     try {
+      console.log('Loading code content from:', filePath);
       const result = await apiClient.getCodeFile(filePath);
+      console.log('Code content result:', result);
       if (result.success) {
         setCodeContent(result.code || '');
       } else {
-        setCodeContent(`// Error loading code: ${result.message}`);
+        const errorMsg = `// Error loading code: ${result.message || 'Unknown error'}\n// File path: ${filePath}`;
+        setCodeContent(errorMsg);
+        setError(result.message || 'Failed to load code content');
       }
     } catch (err) {
-      setCodeContent(`// Error loading code: ${err.message}`);
+      const errorMsg = `// Error loading code: ${err.message}\n// File path: ${filePath}`;
+      setCodeContent(errorMsg);
+      setError(err.message || 'Failed to load code content');
       console.error('Error loading code content:', err);
     } finally {
       setLoadingCode(false);
@@ -138,10 +178,23 @@ export default function CodeViewPage() {
     setCodeFiles([]);
     setSelectedCodeFile(null);
     setCodeContent('');
+    
+    // Check if session has transformations
+    const transformations = session.transformations || session.mappings || [];
+    if (transformations.length === 0) {
+      // Show message that this session has no mappings
+      setCodeContent(`// This session (${session.name}) has no associated transformations/mappings.\n// Sessions without mappings typically represent control tasks (e.g., email notifications, command tasks, decision points).\n// No code generation is needed for these tasks.`);
+    }
   };
 
   const handleMappingSelect = (mapping) => {
-    const mappingName = mapping.mapping_name || mapping.name;
+    const mappingName = mapping.mapping_name || mapping.name || mapping.transformation_name;
+    console.log('Mapping selected:', mappingName, 'from mapping object:', mapping);
+    if (!mappingName) {
+      console.error('No mapping name found in mapping object:', mapping);
+      setError('Invalid mapping: no name found');
+      return;
+    }
     setSelectedMapping(mappingName);
     setCodeFiles([]);
     setSelectedCodeFile(null);
@@ -307,32 +360,55 @@ export default function CodeViewPage() {
                         {transformations.length} transformation(s)
                       </span>
                     </div>
-                    {isSessionSelected && transformations.length > 0 && (
+                    {isSessionSelected && (
                       <div style={{ marginLeft: '20px', marginTop: '5px' }}>
-                        {transformations.map((transformation, tIdx) => {
-                          const transformationName = transformation.transformation_name || transformation.mapping_name || transformation.name;
-                          return (
-                            <div
-                              key={tIdx}
-                              onClick={() => handleMappingSelect(transformation)}
-                              style={{
-                                padding: '8px',
-                                marginBottom: '5px',
-                                background: selectedMapping === transformationName ? '#E3F2FD' : 'white',
-                                border: selectedMapping === transformationName ? '2px solid #4A90E2' : '1px solid #ddd',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                fontSize: '12px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px'
-                              }}
-                            >
-                              <span>📋</span>
-                              <span>{transformationName}</span>
-                            </div>
-                          );
-                        })}
+                        {transformations.length === 0 ? (
+                          <div style={{ 
+                            padding: '8px', 
+                            color: '#666', 
+                            fontSize: '11px', 
+                            fontStyle: 'italic' 
+                          }}>
+                            No transformations found
+                          </div>
+                        ) : (
+                          transformations.map((transformation, tIdx) => {
+                            const transformationName = transformation.transformation_name || transformation.mapping_name || transformation.name;
+                            const isSelected = selectedMapping === transformationName;
+                            return (
+                              <div
+                                key={tIdx}
+                                onClick={() => handleMappingSelect(transformation)}
+                                style={{
+                                  padding: '8px',
+                                  marginBottom: '5px',
+                                  background: isSelected ? '#E3F2FD' : 'white',
+                                  border: isSelected ? '2px solid #4A90E2' : '1px solid #ddd',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontSize: '12px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  transition: 'all 0.2s'
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!isSelected) {
+                                    e.currentTarget.style.background = '#f0f0f0';
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!isSelected) {
+                                    e.currentTarget.style.background = 'white';
+                                  }
+                                }}
+                              >
+                                <span>📋</span>
+                                <span style={{ flex: 1 }}>{transformationName || 'Unknown'}</span>
+                              </div>
+                            );
+                          })
+                        )}
                       </div>
                     )}
                   </div>
@@ -386,7 +462,11 @@ export default function CodeViewPage() {
                   <div style={{ padding: '20px', textAlign: 'center' }}>Loading files...</div>
                 ) : codeFiles.length === 0 ? (
                   <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
-                    No code files found
+                    <div style={{ fontSize: '24px', marginBottom: '10px' }}>📭</div>
+                    <div>No code files found for {selectedMapping}</div>
+                    <div style={{ fontSize: '11px', marginTop: '5px', color: '#999' }}>
+                      Code may not have been generated yet for this transformation
+                    </div>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
@@ -477,10 +557,12 @@ export default function CodeViewPage() {
                       overflow: 'auto',
                       fontSize: '13px',
                       fontFamily: 'monospace',
-                      whiteSpace: 'pre',
-                      lineHeight: '1.5'
+                      whiteSpace: 'pre-wrap',
+                      wordWrap: 'break-word',
+                      lineHeight: '1.5',
+                      maxHeight: '100%'
                     }}>
-                      <code>{codeContent}</code>
+                      <code style={{ display: 'block', whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>{codeContent || '// No code content available'}</code>
                     </pre>
                   </div>
                 ) : (

@@ -4,131 +4,213 @@ import apiClient from '../services/api.js';
 /**
  * Source Repo View Page
  * 
- * Lists all files made available to the accelerator (source repository view with file names).
- * Shows files from Neo4j with their metadata.
+ * Displays a file tree view of source repository structure (staging directory).
+ * Shows the exact folder structure as it exists on disk.
  */
 export default function SourceRepoViewPage() {
-  const [files, setFiles] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [filterType, setFilterType] = useState('all');
+  const [repository, setRepository] = useState({});
+  const [expanded, setExpanded] = useState(new Set());
   const [selectedFile, setSelectedFile] = useState(null);
+  const [fileContent, setFileContent] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [loadingFile, setLoadingFile] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    loadFiles();
+    loadRepository();
   }, []);
 
-  const loadFiles = async () => {
+  useEffect(() => {
+    if (selectedFile) {
+      loadFileContent(selectedFile);
+    }
+  }, [selectedFile]);
+
+  const loadRepository = async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await apiClient.getAllComponents();
+      const result = await apiClient.getSourceRepository();
+      console.log('Source repository API result:', result);
       if (result.success) {
-        // Collect all files from components
-        const allFiles = [];
-        
-        // Add workflow files
-        (result.workflows || []).forEach(wf => {
-          if (wf.file_metadata) {
-            allFiles.push({
-              ...wf.file_metadata,
-              component_type: 'Workflow',
-              component_name: wf.name
-            });
-          }
+        setRepository(result.repository || {});
+        // Auto-expand first level directories
+        const newExpanded = new Set();
+        const firstLevelKeys = Object.keys(result.repository || {}).slice(0, 3);
+        firstLevelKeys.forEach(key => {
+          newExpanded.add(key);
         });
-        
-        // Add session files
-        (result.sessions || []).forEach(sess => {
-          if (sess.file_metadata) {
-            allFiles.push({
-              ...sess.file_metadata,
-              component_type: 'Session',
-              component_name: sess.name
-            });
-          }
-        });
-        
-        // Add worklet files
-        (result.worklets || []).forEach(wl => {
-          if (wl.file_metadata) {
-            allFiles.push({
-              ...wl.file_metadata,
-              component_type: 'Worklet',
-              component_name: wl.name
-            });
-          }
-        });
-        
-        // Add mapping files
-        (result.mappings || []).forEach(m => {
-          if (m.file_metadata) {
-            allFiles.push({
-              ...m.file_metadata,
-              component_type: 'Mapping',
-              component_name: m.name
-            });
-          }
-        });
-        
-        setFiles(allFiles);
+        setExpanded(newExpanded);
       } else {
-        setError(result.message || 'Failed to load files');
+        setError(result.message || 'Failed to load repository');
       }
     } catch (err) {
-      setError(err.message || 'Failed to load files');
-      console.error('Error loading files:', err);
+      setError(err.message || 'Failed to load repository');
+      console.error('Error loading repository:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const formatFileSize = (bytes) => {
-    if (!bytes) return 'N/A';
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
+  const loadFileContent = async (filePath) => {
+    if (!filePath) {
+      setFileContent('');
+      return;
+    }
+    
+    setLoadingFile(true);
+    setError(null);
     try {
-      const date = new Date(dateString);
-      return date.toLocaleString();
-    } catch {
-      return dateString;
+      const result = await apiClient.getSourceFile(filePath);
+      console.log('File content result:', result);
+      if (result.success) {
+        if (result.is_binary) {
+          setFileContent(`// Binary file (base64 encoded)\n// File size: ${result.file_size} bytes\n// Use a binary viewer to decode this content`);
+        } else {
+          setFileContent(result.content || '');
+        }
+      } else {
+        setFileContent(`// Error loading file: ${result.message || 'Unknown error'}\n// File path: ${filePath}`);
+        setError(result.message || 'Failed to load file content');
+      }
+    } catch (err) {
+      const errorMsg = `// Error loading file: ${err.message}\n// File path: ${filePath}`;
+      setFileContent(errorMsg);
+      setError(err.message || 'Failed to load file content');
+      console.error('Error loading file content:', err);
+    } finally {
+      setLoadingFile(false);
     }
   };
 
-  const getFileTypeColor = (type) => {
-    const colors = {
-      'workflow': '#50C878',
-      'session': '#FFA500',
-      'worklet': '#9B59B6',
-      'mapping': '#4A90E2'
-    };
-    return colors[type.toLowerCase()] || '#95A5A6';
+  const toggleExpand = (path) => {
+    setExpanded(prevExpanded => {
+      const newExpanded = new Set(prevExpanded);
+      if (newExpanded.has(path)) {
+        newExpanded.delete(path);
+      } else {
+        newExpanded.add(path);
+      }
+      return newExpanded;
+    });
   };
 
-  const getFileTypeIcon = (type) => {
-    const icons = {
-      'workflow': '🔄',
-      'session': '⚙️',
-      'worklet': '📦',
-      'mapping': '📋'
-    };
-    return icons[type.toLowerCase()] || '📄';
+  const getFileName = (filePath) => {
+    if (!filePath) return 'Unknown';
+    const parts = filePath.split('/');
+    return parts[parts.length - 1];
   };
 
-  const filteredFiles = filterType === 'all' 
-    ? files 
-    : files.filter(f => f.file_type?.toLowerCase() === filterType.toLowerCase());
+  const renderTree = (tree, path = '', level = 0) => {
+    const items = [];
+    const indent = level * 20;
+    
+    Object.keys(tree).forEach(key => {
+      const currentPath = path ? `${path}/${key}` : key;
+      const value = tree[key];
+      
+      if (typeof value === 'object' && !Array.isArray(value) && value !== null && value.type === 'file' && value.path) {
+        // It's a file
+        const filePath = value.file_path || value.path;
+        const isSelected = selectedFile === filePath;
+        items.push(
+          <div key={currentPath} style={{ marginLeft: `${indent}px`, marginTop: '4px' }}>
+            <div
+              onClick={() => setSelectedFile(filePath)}
+              style={{
+                padding: '6px 8px',
+                cursor: 'pointer',
+                background: isSelected ? '#E3F2FD' : 'transparent',
+                border: isSelected ? '2px solid #4A90E2' : '1px solid transparent',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '13px',
+                fontFamily: 'monospace'
+              }}
+            >
+              <span>📄</span>
+              <span style={{ flex: 1 }}>{key}</span>
+            </div>
+          </div>
+        );
+      } else if (typeof value === 'object' && !Array.isArray(value) && value !== null && (!value.type || value.type !== 'file')) {
+        // It's a directory
+        const isExpanded = expanded.has(currentPath);
+        const isRoot = level === 0;
+        const hasChildren = Object.keys(value).length > 0;
+        
+        items.push(
+          <div key={currentPath} style={{ marginLeft: `${indent}px`, marginTop: '4px' }}>
+            <div
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (hasChildren) {
+                  toggleExpand(currentPath);
+                }
+              }}
+              onMouseDown={(e) => {
+                if (hasChildren) {
+                  e.preventDefault();
+                }
+              }}
+              style={{
+                padding: '6px 8px',
+                cursor: hasChildren ? 'pointer' : 'default',
+                background: isExpanded ? '#f5f5f5' : 'transparent',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '13px',
+                fontFamily: isRoot ? 'monospace' : 'inherit',
+                fontWeight: isRoot ? 'bold' : 'normal',
+                userSelect: 'none',
+                WebkitUserSelect: 'none',
+                MozUserSelect: 'none',
+                msUserSelect: 'none',
+                minHeight: '28px',
+                transition: 'background-color 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                if (hasChildren) {
+                  e.currentTarget.style.background = isExpanded ? '#e8e8e8' : '#f0f0f0';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = isExpanded ? '#f5f5f5' : 'transparent';
+              }}
+            >
+              <span style={{ fontSize: '12px' }}>
+                {hasChildren ? (isExpanded ? '📂' : '📁') : '📁'}
+              </span>
+              <span>{key}</span>
+              {hasChildren && (
+                <span style={{ fontSize: '10px', color: '#666', marginLeft: 'auto' }}>
+                  ({Object.keys(value).length})
+                </span>
+              )}
+            </div>
+            {isExpanded && hasChildren && (
+              <div style={{ marginLeft: '20px', marginTop: '4px' }}>
+                {renderTree(value, currentPath, level + 1)}
+              </div>
+            )}
+          </div>
+        );
+      }
+    });
+    
+    return items;
+  };
 
   if (loading) {
     return (
       <div style={{ padding: '40px', textAlign: 'center' }}>
         <div style={{ fontSize: '48px', marginBottom: '20px' }}>⏳</div>
-        <div>Loading source files...</div>
+        <div>Loading source repository...</div>
       </div>
     );
   }
@@ -149,6 +231,8 @@ export default function SourceRepoViewPage() {
     );
   }
 
+  const hasData = repository && Object.keys(repository).length > 0;
+
   return (
     <div style={{ 
       height: 'calc(100vh - 120px)', 
@@ -165,227 +249,129 @@ export default function SourceRepoViewPage() {
       }}>
         <h1 style={{ margin: 0, color: '#333' }}>Source Repo View</h1>
         <p style={{ margin: '5px 0', color: '#666', fontSize: '14px' }}>
-          Listing of files made available to this accelerator
+          File tree view of source repository structure (staging directory)
         </p>
       </div>
 
-      {/* Filter */}
+      {/* Main Content */}
       <div style={{ 
-        marginBottom: '20px', 
         display: 'flex', 
-        gap: '10px', 
-        alignItems: 'center'
-      }}>
-        <label style={{ fontWeight: 'bold', fontSize: '14px' }}>Filter by Type:</label>
-        <select
-          value={filterType}
-          onChange={(e) => setFilterType(e.target.value)}
-          style={{
-            padding: '8px 16px',
-            border: '1px solid #ddd',
-            borderRadius: '6px',
-            fontSize: '14px',
-            cursor: 'pointer',
-            background: 'white'
-          }}
-        >
-          <option value="all">All Types ({files.length})</option>
-          <option value="workflow">Workflows ({files.filter(f => f.file_type?.toLowerCase() === 'workflow').length})</option>
-          <option value="session">Sessions ({files.filter(f => f.file_type?.toLowerCase() === 'session').length})</option>
-          <option value="worklet">Worklets ({files.filter(f => f.file_type?.toLowerCase() === 'worklet').length})</option>
-          <option value="mapping">Mappings ({files.filter(f => f.file_type?.toLowerCase() === 'mapping').length})</option>
-        </select>
-      </div>
-
-      {/* File List */}
-      <div style={{ 
+        gap: '20px', 
         flex: 1, 
-        overflow: 'auto', 
-        border: '1px solid #ddd', 
-        borderRadius: '8px',
-        background: 'white'
+        overflow: 'hidden',
+        minHeight: 0
       }}>
-        {filteredFiles.length === 0 ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
-            <div style={{ fontSize: '48px', marginBottom: '20px' }}>📭</div>
-            <h3>No Files Found</h3>
-            <p>Files will appear here after running `make test-all`</p>
-          </div>
-        ) : (
-          <div style={{ padding: '15px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid #ddd', background: '#f5f5f5' }}>
-                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: 'bold' }}>Type</th>
-                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: 'bold' }}>Filename</th>
-                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: 'bold' }}>Component</th>
-                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: 'bold' }}>File Path</th>
-                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: 'bold' }}>Size</th>
-                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: 'bold' }}>Parsed At</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredFiles.map((file, idx) => (
-                  <tr
-                    key={idx}
-                    onClick={() => setSelectedFile(file)}
-                    style={{
-                      borderBottom: '1px solid #eee',
-                      cursor: 'pointer',
-                      background: selectedFile?.file_path === file.file_path ? '#E3F2FD' : 'transparent',
-                      transition: 'background 0.2s'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (selectedFile?.file_path !== file.file_path) {
-                        e.currentTarget.style.background = '#f5f5f5';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (selectedFile?.file_path !== file.file_path) {
-                        e.currentTarget.style.background = 'transparent';
-                      }
-                    }}
-                  >
-                    <td style={{ padding: '12px' }}>
-                      <span style={{ 
-                        padding: '4px 8px',
-                        borderRadius: '4px',
-                        background: getFileTypeColor(file.file_type),
-                        color: 'white',
-                        fontSize: '12px',
-                        fontWeight: 'bold'
-                      }}>
-                        {getFileTypeIcon(file.file_type)} {file.file_type || 'Unknown'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px', fontFamily: 'monospace', fontSize: '13px' }}>
-                      {file.filename || 'N/A'}
-                    </td>
-                    <td style={{ padding: '12px', fontSize: '13px' }}>
-                      {file.component_name || 'N/A'}
-                    </td>
-                    <td style={{ padding: '12px', fontFamily: 'monospace', fontSize: '12px', color: '#666', maxWidth: '400px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {file.file_path || 'N/A'}
-                    </td>
-                    <td style={{ padding: '12px', fontSize: '13px' }}>
-                      {formatFileSize(file.file_size)}
-                    </td>
-                    <td style={{ padding: '12px', fontSize: '13px', color: '#666' }}>
-                      {formatDate(file.parsed_at)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* File Detail Sidebar */}
-      {selectedFile && (
-        <div style={{
-          position: 'fixed',
-          right: 0,
-          top: 0,
-          width: '400px',
-          height: '100vh',
+        {/* Tree View */}
+        <div style={{ 
+          width: '450px', 
+          border: '1px solid #ddd', 
+          borderRadius: '8px',
+          overflow: 'hidden',
           background: 'white',
-          boxShadow: '-2px 0 8px rgba(0,0,0,0.1)',
-          padding: '20px',
-          overflow: 'auto',
-          zIndex: 1000
+          display: 'flex',
+          flexDirection: 'column'
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <h2 style={{ margin: 0, color: '#333', fontSize: '18px' }}>File Details</h2>
-            <button
-              onClick={() => setSelectedFile(null)}
-              style={{
-                background: 'none',
-                border: 'none',
-                fontSize: '24px',
-                cursor: 'pointer',
-                color: '#666'
-              }}
-            >
-              ×
-            </button>
+          <div style={{ 
+            padding: '15px', 
+            borderBottom: '1px solid #ddd',
+            background: '#f5f5f5',
+            fontWeight: 'bold',
+            fontSize: '14px'
+          }}>
+            Source Repository Structure
           </div>
-          
-          <div style={{ marginBottom: '15px' }}>
-            <strong>Filename:</strong>
-            <div style={{ 
-              fontFamily: 'monospace', 
-              fontSize: '13px', 
-              background: '#f5f5f5', 
-              padding: '8px', 
-              borderRadius: '4px',
-              marginTop: '5px',
-              wordBreak: 'break-all'
-            }}>
-              {selectedFile.filename}
-            </div>
-          </div>
-
-          <div style={{ marginBottom: '15px' }}>
-            <strong>Component:</strong>
-            <div style={{ fontSize: '13px', marginTop: '5px' }}>
-              <span style={{ 
-                padding: '4px 8px',
-                borderRadius: '4px',
-                background: getFileTypeColor(selectedFile.file_type),
-                color: 'white',
-                fontSize: '12px',
-                fontWeight: 'bold',
-                marginRight: '8px'
-              }}>
-                {selectedFile.component_type}
-              </span>
-              {selectedFile.component_name}
-            </div>
-          </div>
-
-          <div style={{ marginBottom: '15px' }}>
-            <strong>File Path:</strong>
-            <div style={{ 
-              fontFamily: 'monospace', 
-              fontSize: '12px', 
-              background: '#f5f5f5', 
-              padding: '8px', 
-              borderRadius: '4px',
-              marginTop: '5px',
-              wordBreak: 'break-all'
-            }}>
-              {selectedFile.file_path}
-            </div>
-          </div>
-
-          <div style={{ marginBottom: '15px' }}>
-            <strong>File Size:</strong>
-            <div style={{ fontSize: '13px', marginTop: '5px' }}>
-              {formatFileSize(selectedFile.file_size)}
-            </div>
-          </div>
-
-          {selectedFile.parsed_at && (
-            <div style={{ marginBottom: '15px' }}>
-              <strong>Parsed At:</strong>
-              <div style={{ fontSize: '13px', marginTop: '5px' }}>
-                {formatDate(selectedFile.parsed_at)}
+          <div style={{ flex: 1, overflow: 'auto', padding: '15px', fontFamily: 'monospace', fontSize: '12px' }}>
+            {!hasData ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
+                <div style={{ fontSize: '48px', marginBottom: '20px' }}>📁</div>
+                <h3>No Source Files Found</h3>
+                <p>No source files found in staging directory.</p>
+                <p style={{ fontSize: '12px', marginTop: '10px', color: '#999' }}>
+                  Files will appear here after running `make test-all`
+                </p>
               </div>
-            </div>
-          )}
+            ) : (
+              <div>
+                {renderTree(repository)}
+              </div>
+            )}
+          </div>
+        </div>
 
-          {selectedFile.uploaded_at && (
-            <div style={{ marginBottom: '15px' }}>
-              <strong>Uploaded At:</strong>
-              <div style={{ fontSize: '13px', marginTop: '5px' }}>
-                {formatDate(selectedFile.uploaded_at)}
+        {/* File Display */}
+        <div style={{ 
+          flex: 1, 
+          border: '1px solid #ddd', 
+          borderRadius: '8px',
+          overflow: 'hidden',
+          background: 'white',
+          display: 'flex',
+          flexDirection: 'column'
+        }}>
+          {!selectedFile ? (
+            <div style={{ 
+              padding: '40px', 
+              textAlign: 'center', 
+              color: '#666',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexDirection: 'column'
+            }}>
+              <div style={{ fontSize: '48px', marginBottom: '20px' }}>📄</div>
+              <h2 style={{ margin: '10px 0', color: '#333' }}>Select a File</h2>
+              <p style={{ margin: '5px 0', color: '#666' }}>
+                Choose a file from the tree to view its contents
+              </p>
+            </div>
+          ) : (
+            <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ 
+                padding: '15px', 
+                borderBottom: '1px solid #ddd',
+                background: '#f5f5f5',
+                fontSize: '13px',
+                fontFamily: 'monospace'
+              }}>
+                <div><strong>File:</strong> {selectedFile}</div>
+              </div>
+              <div style={{ flex: 1, overflow: 'auto', padding: '20px' }}>
+                {loadingFile ? (
+                  <div style={{ 
+                    padding: '40px', 
+                    textAlign: 'center',
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <div>
+                      <div style={{ fontSize: '24px', marginBottom: '10px' }}>⏳</div>
+                      <div>Loading file...</div>
+                    </div>
+                  </div>
+                ) : (
+                  <pre style={{ 
+                    margin: 0,
+                    padding: '15px',
+                    background: '#fafafa',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    overflow: 'auto',
+                    fontSize: '13px',
+                    fontFamily: 'monospace',
+                    whiteSpace: 'pre',
+                    lineHeight: '1.5'
+                  }}>
+                    <code>{fileContent || '// No file content available'}</code>
+                  </pre>
+                )}
               </div>
             </div>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
-

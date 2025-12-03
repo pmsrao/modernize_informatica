@@ -69,28 +69,17 @@ class Analyzer:
             # This would require parsing expressions - placeholder for now
             patterns["custom_function_usage"] = []
             
-            # External dependencies (mappings that reference external systems)
-            result = session.run("""
-                MATCH (m:Mapping)-[:HAS_SOURCE]->(s:Source)
-                WHERE s.database_type IS NOT NULL AND s.database_type <> 'Informatica'
-                RETURN DISTINCT m.name as mapping_name,
-                       collect(DISTINCT s.database_type) as external_systems
-                LIMIT 50
-            """)
-            patterns["external_dependencies"] = [
-                {
-                    "mapping_name": record["mapping_name"],
-                    "external_systems": record["external_systems"]
-                }
-                for record in result
-            ]
+            # External dependencies (transformations that reference external systems)
+            # Note: database_type property doesn't exist in current schema, removing this query
+            patterns["external_dependencies"] = []
         
         # SCD type distribution
         with self.graph_store.driver.session() as session:
             result = session.run("""
-                MATCH (m:Mapping)
-                WHERE m.scd_type IS NOT NULL
-                RETURN m.scd_type as scd_type, count(m) as count
+                MATCH (t:Transformation)
+                WHERE (t.source_component_type = 'mapping' OR t.source_component_type IS NULL)
+                AND t.scd_type IS NOT NULL
+                RETURN t.scd_type as scd_type, count(t) as count
             """)
             patterns["scd_type_distribution"] = {
                 record["scd_type"]: record["count"]
@@ -100,7 +89,8 @@ class Analyzer:
         # Common transformation patterns
         with self.graph_store.driver.session() as session:
             result = session.run("""
-                MATCH (m:Mapping)-[:HAS_TRANSFORMATION]->(t:Transformation)
+                MATCH (t:Transformation)-[:HAS_TRANSFORMATION]->(nt:Transformation)
+                WHERE (t.source_component_type = 'mapping' OR t.source_component_type IS NULL)
                 WITH t.type as trans_type, count(*) as usage_count
                 WHERE usage_count > 1
                 RETURN trans_type, usage_count
@@ -140,20 +130,22 @@ class Analyzer:
             unsupported_types = ["Java Transformation", "Custom Transformation", "Advanced External Procedure"]
             
             result = session.run("""
-                MATCH (m:Mapping)-[:HAS_TRANSFORMATION]->(t:Transformation)
-                WHERE t.type IN $unsupported_types
-                RETURN m.name as mapping_name,
-                       t.name as transformation_name,
+                MATCH (t:Transformation)
+                WHERE (t.source_component_type = 'mapping' OR t.source_component_type IS NULL)
+                AND t.type IN $unsupported_types
+                RETURN t.name as transformation_name,
+                       t.transformation_name as transformation_name_full,
                        t.type as transformation_type
             """, unsupported_types=unsupported_types)
             
             for record in result:
+                transformation_name = record.get("transformation_name_full") or record["transformation_name"]
                 blockers.append({
-                    "component_name": record["mapping_name"],
-                    "component_type": "MAPPING",
+                    "component_name": transformation_name,
+                    "component_type": "TRANSFORMATION",
                     "blocker_type": "UNSUPPORTED_TRANSFORMATION",
                     "severity": "HIGH",
-                    "description": f"Mapping uses unsupported transformation type: {record['transformation_type']}",
+                    "description": f"Transformation uses unsupported type: {record['transformation_type']}",
                     "recommendation": f"Review transformation '{record['transformation_name']}' and consider rewriting logic"
                 })
         
@@ -341,10 +333,12 @@ class Analyzer:
         logger.info("Analyzing dependencies...")
         
         with self.graph_store.driver.session() as session:
-            # Get all mapping dependencies
+            # Get all transformation dependencies
             result = session.run("""
-                MATCH (m1:Mapping)-[:DEPENDS_ON]->(m2:Mapping)
-                RETURN m1.name as source, m2.name as target
+                MATCH (t1:Transformation)-[:DEPENDS_ON]->(t2:Transformation)
+                WHERE (t1.source_component_type = 'mapping' OR t1.source_component_type IS NULL)
+                AND (t2.source_component_type = 'mapping' OR t2.source_component_type IS NULL)
+                RETURN t1.name as source, t2.name as target
             """)
             
             dependency_graph = [
@@ -352,20 +346,22 @@ class Analyzer:
                 for record in result
             ]
             
-            # Find independent mappings (no dependencies)
+            # Find independent transformations (no dependencies)
             result = session.run("""
-                MATCH (m:Mapping)
-                WHERE NOT (m)-[:DEPENDS_ON]->()
-                RETURN m.name as name
+                MATCH (t:Transformation)
+                WHERE (t.source_component_type = 'mapping' OR t.source_component_type IS NULL)
+                AND NOT (t)-[:DEPENDS_ON]->()
+                RETURN t.name as name
             """)
             independent_mappings = [record["name"] for record in result]
             
-            # Find highly dependent mappings (many dependencies)
+            # Find highly dependent transformations (many dependencies)
             result = session.run("""
-                MATCH (m:Mapping)-[:DEPENDS_ON]->(dep:Mapping)
-                WITH m, count(dep) as dep_count
+                MATCH (t:Transformation)-[:DEPENDS_ON]->(dep:Transformation)
+                WHERE (t.source_component_type = 'mapping' OR t.source_component_type IS NULL)
+                WITH t, count(dep) as dep_count
                 WHERE dep_count > 3
-                RETURN m.name as name, dep_count
+                RETURN t.name as name, dep_count
                 ORDER BY dep_count DESC
             """)
             highly_dependent_mappings = [

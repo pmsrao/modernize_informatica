@@ -297,30 +297,75 @@ class APIClient {
   // Workflow Endpoints
   async listWorkflows() {
     try {
-      return await this.request('/api/v1/graph/workflows');
+      const result = await this.request('/api/v1/graph/workflows');
+      // Handle both new (pipelines) and old (workflows) response formats
+      if (result.pipelines && !result.workflows) {
+        result.workflows = result.pipelines;
+      }
+      return result;
     } catch (error) {
       console.error('Error listing workflows:', error);
       // Return empty list on error instead of throwing
-      return { success: false, workflows: [], message: error.message };
+      return { success: false, workflows: [], pipelines: [], message: error.message };
     }
   }
 
   async getWorkflowStructure(workflowName) {
     try {
-      return await this.request(`/api/v1/graph/workflows/${encodeURIComponent(workflowName)}`);
+      const result = await this.request(`/api/v1/graph/workflows/${encodeURIComponent(workflowName)}`);
+      // Handle both new (pipeline) and old (workflow) response formats
+      if (result.pipeline && !result.workflow) {
+        result.workflow = result.pipeline;
+      }
+      return result;
     } catch (error) {
       console.error('Error getting workflow structure:', error);
-      return { success: false, workflow: null, message: error.message };
+      return { success: false, workflow: null, pipeline: null, message: error.message };
     }
   }
 
   // Component Endpoints
   async getAllComponents() {
     try {
-      return await this.request('/api/v1/graph/components');
+      const result = await this.request('/api/v1/graph/components');
+      // Ensure backward compatibility - API should return both, but handle if it doesn't
+      if (result.pipelines && !result.workflows) {
+        result.workflows = result.pipelines;
+      }
+      if (result.tasks && !result.sessions) {
+        result.sessions = result.tasks;
+      }
+      if (result.sub_pipelines && !result.worklets) {
+        result.worklets = result.sub_pipelines;
+      }
+      if (result.transformations && !result.mappings) {
+        result.mappings = result.transformations;
+      }
+      if (result.reusable_transformations && !result.mapplets) {
+        result.mapplets = result.reusable_transformations;
+      }
+      // Ensure counts are also backward compatible
+      if (result.counts) {
+        if (result.counts.pipelines !== undefined && result.counts.workflows === undefined) {
+          result.counts.workflows = result.counts.pipelines;
+        }
+        if (result.counts.tasks !== undefined && result.counts.sessions === undefined) {
+          result.counts.sessions = result.counts.tasks;
+        }
+        if (result.counts.sub_pipelines !== undefined && result.counts.worklets === undefined) {
+          result.counts.worklets = result.counts.sub_pipelines;
+        }
+        if (result.counts.transformations !== undefined && result.counts.mappings === undefined) {
+          result.counts.mappings = result.counts.transformations;
+        }
+        if (result.counts.reusable_transformations !== undefined && result.counts.mapplets === undefined) {
+          result.counts.mapplets = result.counts.reusable_transformations;
+        }
+      }
+      return result;
     } catch (error) {
       console.error('Error getting all components:', error);
-      return { success: false, workflows: [], sessions: [], worklets: [], mappings: [], counts: {} };
+      return { success: false, workflows: [], sessions: [], worklets: [], mappings: [], mapplets: [], counts: {} };
     }
   }
 
@@ -330,6 +375,25 @@ class APIClient {
     } catch (error) {
       console.error('Error getting file metadata:', error);
       return { success: false, file_metadata: null, message: error.message };
+    }
+  }
+
+  // Source Repository Endpoints
+  async getSourceRepository() {
+    try {
+      return await this.request('/api/v1/graph/source/repository');
+    } catch (error) {
+      console.error('Error getting source repository:', error);
+      return { success: false, repository: {}, message: error.message };
+    }
+  }
+
+  async getSourceFile(filePath) {
+    try {
+      return await this.request(`/api/v1/graph/source/file/${encodeURIComponent(filePath)}`);
+    } catch (error) {
+      console.error('Error getting source file:', error);
+      return { success: false, content: '', message: error.message };
     }
   }
 

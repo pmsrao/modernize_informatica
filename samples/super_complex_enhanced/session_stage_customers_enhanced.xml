@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<SESSION NAME="S_M_STAGE_CUSTOMERS_ENHANCED" MAPPINGNAME="M_STAGE_CUSTOMERS_ENHANCED">
+  <!-- Session Configuration for Enhanced Customer Staging -->
+  
+  <ATTRIBUTE NAME="Source Database Connection" VALUE="ORACLE_SOURCE"/>
+  <ATTRIBUTE NAME="Target Database Connection" VALUE="STAGING_DB"/>
+  <ATTRIBUTE NAME="Tracing Level" VALUE="Normal"/>
+  <ATTRIBUTE NAME="Log File Directory" VALUE="/logs/etl"/>
+  <ATTRIBUTE NAME="Session Log File Name" VALUE="stage_customers_enhanced.log"/>
+  
+  <!-- Source: Staging Customers -->
+  <SOURCE DATABASENAME="STAGING_DB" NAME="STG_CUSTOMERS" TABLENAME="STG_CUSTOMERS"/>
+  
+  <!-- Targets -->
+  <TARGET DATABASENAME="STAGING_DB" NAME="STAGE_CUSTOMERS" TABLENAME="STAGE_CUSTOMERS"/>
+  <TARGET DATABASENAME="STAGING_DB" NAME="REJECT_CUSTOMERS" TABLENAME="REJECT_CUSTOMERS"/>
+  
+</SESSION>
+

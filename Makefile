@@ -39,9 +39,9 @@ $(TEST_LOG_DIR):
 # Step a: Upload files
 upload: $(TEST_LOG_DIR)
 	@if [ -z "$(FILES)" ]; then \
-		echo "📤 Using default files: samples/super_complex/*.xml"; \
+		echo "📤 Using default files: samples/super_complex_enhanced/*.xml"; \
 		echo "📤 Uploading files to $(STAGING_DIR)..."; \
-		python scripts/test_flow.py upload --files "samples/super_complex/*.xml" --staging-dir $(STAGING_DIR) --api-url $(API_URL); \
+		python scripts/test_flow.py upload --files "samples/super_complex_enhanced/*.xml" --staging-dir $(STAGING_DIR) --api-url $(API_URL); \
 	else \
 		echo "📤 Uploading files to $(STAGING_DIR)..."; \
 		python scripts/test_flow.py upload --files "$(FILES)" --staging-dir $(STAGING_DIR) --api-url $(API_URL); \
@@ -88,7 +88,7 @@ review: $(TEST_LOG_DIR)
 # Step i: Generate diff reports
 diff: $(TEST_LOG_DIR)
 	@echo "📊 Generating diff reports..."
-	@python scripts/generate_diff.py --test-log-dir $(TEST_LOG_DIR) --output-dir $(TEST_LOG_DIR)/diffs
+	@python scripts/utils/generate_diff.py --test-log-dir $(TEST_LOG_DIR) --output-dir $(TEST_LOG_DIR)/diffs
 
 # Run all steps in sequence
 test-all: $(TEST_LOG_DIR)

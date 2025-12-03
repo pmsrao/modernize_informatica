@@ -16,7 +16,8 @@ import html
 from datetime import datetime
 
 # Add project root to path
-project_root = Path(__file__).parent.parent
+# generate_diff.py is in scripts/utils/, so we need to go up 2 levels to get to project root
+project_root = Path(__file__).parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 if str(project_root / "src") not in sys.path:
@@ -28,7 +29,8 @@ class DiffGenerator:
     
     def __init__(self, test_log_dir: str = "test_log"):
         self.test_log_dir = test_log_dir
-        self.project_root = Path(__file__).parent.parent
+        # generate_diff.py is in scripts/utils/, so we need to go up 2 levels to get to project root
+        self.project_root = Path(__file__).parent.parent.parent
         
     def generate_all_diffs(self, output_dir: str) -> Dict[str, Any]:
         """Generate all diff reports in HTML format.
@@ -298,11 +300,38 @@ class DiffGenerator:
         parsed_dir = os.path.join(self.project_root, self.test_log_dir, "parsed")
         enhanced_dir = os.path.join(self.project_root, self.test_log_dir, "parse_ai")
         
+        # Debug: Show paths being used
+        print(f"   🔍 Looking in parsed_dir: {parsed_dir}")
+        print(f"   🔍 Looking in enhanced_dir: {enhanced_dir}")
+        print(f"   🔍 Project root: {self.project_root}")
+        print(f"   🔍 Test log dir: {self.test_log_dir}")
+        
+        # Debug: Check if directories exist
+        if not os.path.exists(parsed_dir):
+            print(f"   ⚠️  Parsed directory does not exist: {parsed_dir}")
+            return []
+        if not os.path.exists(enhanced_dir):
+            print(f"   ⚠️  Enhanced directory does not exist: {enhanced_dir}")
+            return []
+        
         diffs = []
         
-        # Find all parsed models
+        # Find all parsed models (only canonical models: mappings and mapplets)
+        # Skip workflows, sessions, worklets, and summary files
         parsed_files = glob.glob(os.path.join(parsed_dir, "*.json"))
-        parsed_files = [f for f in parsed_files if not os.path.basename(f).endswith("_summary.json")]
+        print(f"   🔍 Found {len(parsed_files)} total JSON file(s) in parsed directory")
+        
+        # Filter: keep mappings and mapplets, exclude workflows/sessions/worklets/summaries
+        parsed_files = [f for f in parsed_files 
+                       if not os.path.basename(f).endswith("_summary.json")
+                       and not os.path.basename(f).endswith("_workflow.json")
+                       and not os.path.basename(f).endswith("_session.json")
+                       and not os.path.basename(f).endswith("_worklet.json")
+                       and not os.path.basename(f) == "parse_summary.json"]
+        
+        print(f"   📁 Found {len(parsed_files)} parsed model(s) to compare (after filtering)")
+        if parsed_files:
+            print(f"   📄 Files: {[os.path.basename(f) for f in parsed_files]}")
         
         for parsed_file in parsed_files:
             filename = os.path.basename(parsed_file)
@@ -310,7 +339,7 @@ class DiffGenerator:
             enhanced_file = os.path.join(enhanced_dir, f"{mapping_name}_enhanced.json")
             
             if not os.path.exists(enhanced_file):
-                print(f"   ⚠️  No enhanced version for {mapping_name}")
+                print(f"   ⚠️  No enhanced version for {mapping_name} (looking for: {os.path.basename(enhanced_file)})")
                 diffs.append({
                     "mapping": mapping_name,
                     "has_changes": False,
@@ -339,7 +368,7 @@ class DiffGenerator:
                 with open(diff_file, 'w') as f:
                     f.write(html_content)
                 
-                print(f"   ✅ HTML diff generated: {mapping_name}")
+                print(f"   ✅ Compared {mapping_name}: {diff_result['changes_count']} changes detected")
                 
                 diffs.append({
                     "mapping": mapping_name,
@@ -634,6 +663,21 @@ class DiffGenerator:
         for ext in code_extensions:
             generated_files.extend(glob.glob(os.path.join(generated_dir, "**", ext), recursive=True))
         
+        # Also find all reviewed code files for reverse lookup
+        reviewed_files = []
+        for ext in code_extensions:
+            reviewed_files.extend(glob.glob(os.path.join(reviewed_dir, "**", ext), recursive=True))
+        
+        # Create a map of reviewed files by their base name (for matching)
+        reviewed_files_map = {}
+        for reviewed_file in reviewed_files:
+            base_name = os.path.basename(reviewed_file)
+            # Remove common suffixes like _pyspark, _fixed, _reviewed
+            base_name_clean = base_name.replace("_pyspark", "").replace("_fixed", "").replace("_reviewed", "")
+            if base_name_clean not in reviewed_files_map:
+                reviewed_files_map[base_name_clean] = []
+            reviewed_files_map[base_name_clean].append(reviewed_file)
+        
         for generated_file in generated_files:
             rel_path = os.path.relpath(generated_file, generated_dir)
             # Preserve directory structure when looking for reviewed file
@@ -644,6 +688,47 @@ class DiffGenerator:
                 reviewed_file_flat = os.path.join(reviewed_dir, os.path.basename(generated_file))
                 if os.path.exists(reviewed_file_flat):
                     reviewed_file = reviewed_file_flat
+            
+            # Check for renamed files (AI review may rename files, e.g., airflow_dag.py -> airflow_dag_pyspark.py)
+            if not os.path.exists(reviewed_file):
+                base_name = os.path.basename(generated_file)
+                base_name_no_ext, ext = os.path.splitext(base_name)
+                dir_path = os.path.dirname(os.path.join(reviewed_dir, rel_path))
+                
+                # Try common rename patterns
+                rename_patterns = [
+                    f"{base_name_no_ext}_pyspark{ext}",
+                    f"{base_name_no_ext}_fixed{ext}",
+                    f"{base_name_no_ext}_reviewed{ext}",
+                ]
+                
+                for pattern in rename_patterns:
+                    renamed_file = os.path.join(dir_path, pattern)
+                    if os.path.exists(renamed_file):
+                        reviewed_file = renamed_file
+                        break
+                
+                # Also try in flat structure
+                if not os.path.exists(reviewed_file):
+                    for pattern in rename_patterns:
+                        renamed_file_flat = os.path.join(reviewed_dir, pattern)
+                        if os.path.exists(renamed_file_flat):
+                            reviewed_file = renamed_file_flat
+                            break
+                
+                # Use reverse lookup map to find reviewed file by base name (cleaned)
+                base_name_clean = base_name.replace("_pyspark", "").replace("_fixed", "").replace("_reviewed", "")
+                if not os.path.exists(reviewed_file) and base_name_clean in reviewed_files_map:
+                    # Find the reviewed file in the same directory structure if possible
+                    for candidate in reviewed_files_map[base_name_clean]:
+                        candidate_rel = os.path.relpath(candidate, reviewed_dir)
+                        # Check if directory structure matches
+                        if os.path.dirname(candidate_rel) == os.path.dirname(rel_path):
+                            reviewed_file = candidate
+                            break
+                    # If no match in same directory, use first available
+                    if not os.path.exists(reviewed_file) and reviewed_files_map[base_name_clean]:
+                        reviewed_file = reviewed_files_map[base_name_clean][0]
             
             if not os.path.exists(reviewed_file):
                 # Check if there's a review JSON instead (preserve structure)

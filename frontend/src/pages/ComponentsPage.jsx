@@ -12,17 +12,19 @@ export default function ComponentsPage() {
     workflows: [],
     sessions: [],
     worklets: [],
-    mappings: []
+    mappings: [],
+    mapplets: []
   });
   const [counts, setCounts] = useState({
     workflows: 0,
     sessions: 0,
     worklets: 0,
-    mappings: 0
+    mappings: 0,
+    mapplets: 0
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [filterType, setFilterType] = useState('all'); // 'all', 'workflow', 'session', 'worklet', 'mapping'
+  const [filterType, setFilterType] = useState('all'); // 'all', 'workflow', 'session', 'worklet', 'mapping', 'mapplet'
   const [selectedComponent, setSelectedComponent] = useState(null);
 
   useEffect(() => {
@@ -39,13 +41,15 @@ export default function ComponentsPage() {
           workflows: result.workflows || [],
           sessions: result.sessions || [],
           worklets: result.worklets || [],
-          mappings: result.mappings || []
+          mappings: result.mappings || [],
+          mapplets: result.mapplets || []
         });
         setCounts(result.counts || {
           workflows: 0,
           sessions: 0,
           worklets: 0,
-          mappings: 0
+          mappings: 0,
+          mapplets: 0
         });
       } else {
         setError(result.message || 'Failed to load components');
@@ -63,7 +67,8 @@ export default function ComponentsPage() {
       'workflow': '#50C878',
       'session': '#FFA500',
       'worklet': '#9B59B6',
-      'mapping': '#4A90E2'
+      'mapping': '#4A90E2',
+      'mapplet': '#E74C3C'
     };
     return colors[type.toLowerCase()] || '#95A5A6';
   };
@@ -73,7 +78,8 @@ export default function ComponentsPage() {
       'workflow': '🔄',
       'session': '⚙️',
       'worklet': '📦',
-      'mapping': '📋'
+      'mapping': '📋',
+      'mapplet': '🔧'
     };
     return icons[type.toLowerCase()] || '❓';
   };
@@ -141,13 +147,15 @@ export default function ComponentsPage() {
         workflows: components.workflows,
         sessions: components.sessions,
         worklets: components.worklets,
-        mappings: components.mappings
+        mappings: components.mappings,
+        mapplets: components.mapplets
       }
     : {
         workflows: filterType === 'workflow' ? components.workflows : [],
         sessions: filterType === 'session' ? components.sessions : [],
         worklets: filterType === 'worklet' ? components.worklets : [],
-        mappings: filterType === 'mapping' ? components.mappings : []
+        mappings: filterType === 'mapping' ? components.mappings : [],
+        mapplets: filterType === 'mapplet' ? components.mapplets : []
       };
 
   if (loading) {
@@ -252,11 +260,26 @@ export default function ComponentsPage() {
             <div style={{ fontSize: '11px', color: '#666' }}>Mappings</div>
           </div>
         </div>
+        <div style={{ 
+          background: 'white', 
+          padding: '8px 16px', 
+          borderRadius: '6px', 
+          border: '1px solid #E74C3C',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <span style={{ fontSize: '18px' }}>🔧</span>
+          <div>
+            <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#E74C3C' }}>{counts.mapplets}</div>
+            <div style={{ fontSize: '11px', color: '#666' }}>Mapplets</div>
+          </div>
+        </div>
       </div>
 
       {/* Filter Buttons */}
       <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-        {['all', 'workflow', 'session', 'worklet', 'mapping'].map(type => (
+        {['all', 'workflow', 'session', 'worklet', 'mapping', 'mapplet'].map(type => (
           <button
             key={type}
             onClick={() => setFilterType(type)}
@@ -326,6 +349,19 @@ export default function ComponentsPage() {
               gap: '15px' 
             }}>
               {filteredComponents.mappings.map(m => renderComponentCard(m, 'mapping'))}
+            </div>
+          </div>
+        )}
+
+        {(filterType === 'all' || filterType === 'mapplet') && filteredComponents.mapplets.length > 0 && (
+          <div style={{ marginBottom: '30px' }}>
+            <h2 style={{ marginBottom: '15px', color: '#333' }}>Mapplets ({filteredComponents.mapplets.length})</h2>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', 
+              gap: '15px' 
+            }}>
+              {filteredComponents.mapplets.map(mpl => renderComponentCard(mpl, 'mapplet'))}
             </div>
           </div>
         )}

@@ -31,7 +31,7 @@ if str(project_root / "src") not in sys.path:
 
 try:
     from src.api.file_manager import file_manager
-    from parser import MappingParser, WorkflowParser, SessionParser, WorkletParser
+    from parser import MappingParser, WorkflowParser, SessionParser, WorkletParser, MappletParser
     from normalizer import MappingNormalizer
     from generators import PySparkGenerator, DLTGenerator, SQLGenerator
     from dag import DAGBuilder, DAGVisualizer
@@ -42,7 +42,10 @@ try:
     from src.assessment.analyzer import Analyzer
     from src.assessment.wave_planner import WavePlanner
     from src.assessment.report_generator import ReportGenerator
+    from src.utils.logger import get_logger
     from config import settings
+    
+    logger = get_logger(__name__)
 except ImportError as e:
     print(f"Error importing modules: {e}")
     print("Make sure you're running from the project root and dependencies are installed.")
@@ -168,7 +171,9 @@ class TestFlow:
         os.makedirs(output_dir, exist_ok=True)
         
         # Find all Informatica XML files
+        # IMPORTANT: Parse mapplets FIRST so they're available when mappings reference them
         all_files = (
+            glob.glob(os.path.join(staging_dir, "*mapplet*.xml")) +  # Parse mapplets first
             glob.glob(os.path.join(staging_dir, "*mapping*.xml")) +
             glob.glob(os.path.join(staging_dir, "*workflow*.xml")) +
             glob.glob(os.path.join(staging_dir, "*session*.xml")) +
@@ -183,6 +188,7 @@ class TestFlow:
             "parsed": [],
             "failed": [],
             "by_type": {
+                "mapplets": [],
                 "mappings": [],
                 "workflows": [],
                 "sessions": [],
@@ -202,15 +208,19 @@ class TestFlow:
         
         # Initialize graph store if enabled
         graph_store = None
+        version_store = None
         try:
             from config import settings
             enable_graph = getattr(settings, 'enable_graph_store', False) or os.getenv('ENABLE_GRAPH_STORE', 'false').lower() == 'true'
             if enable_graph:
                 graph_store = GraphStore()
+                graph_first = getattr(settings, 'graph_first', False) or os.getenv('GRAPH_FIRST', 'false').lower() == 'true'
+                version_store = VersionStore(graph_store=graph_store, graph_first=graph_first)
                 print("   ✅ Graph store enabled - components will be saved to Neo4j")
         except Exception as e:
             print(f"   ⚠️  Graph store not available: {e}")
             graph_store = None
+            version_store = None
         
         # Use progress indicator if available
         file_iter = tqdm(all_files, desc="Parsing files", unit="file") if use_progress and tqdm else all_files
@@ -221,12 +231,69 @@ class TestFlow:
             print(f"\n📋 Parsing {file_type.upper()}: {filename}")
             
             try:
-                if file_type == "mapping":
+                if file_type == "mapplet":
+                    # Parse mapplet (reusable transformation set)
+                    parser = MappletParser(file_path)
+                    mapplet_data = parser.parse()
+                    mapplet_name = mapplet_data.get("name", filename.replace(".xml", ""))
+                    
+                    # Save mapplet structure
+                    output_file = os.path.join(output_dir, f"{mapplet_name}_mapplet.json")
+                    with open(output_file, 'w') as f:
+                        json.dump(mapplet_data, f, indent=2, default=str)
+                    
+                    # Save to version store (for code generation to find mapplets)
+                    if version_store:
+                        try:
+                            # Save with both the mapplet name and with _mapplet suffix for lookup
+                            version_store.save(mapplet_name, mapplet_data)
+                            # Also save enhanced version if it exists
+                            parse_ai_dir = os.path.join(base_dir, "parse_ai")
+                            enhanced_file = os.path.join(parse_ai_dir, f"{mapplet_name}_mapplet_enhanced.json")
+                            if os.path.exists(enhanced_file):
+                                with open(enhanced_file, 'r') as f:
+                                    enhanced_data = json.load(f)
+                                    version_store.save(mapplet_name, enhanced_data)
+                            logger.debug(f"Saved mapplet to version store: {mapplet_name}")
+                        except Exception as e:
+                            logger.warning(f"Failed to save mapplet to version store: {e}")
+                            print(f"   ⚠️  Failed to save mapplet to version store: {e}")
+                    
+                    # Save to Neo4j if graph store is enabled
+                    if graph_store:
+                        try:
+                            graph_store.save_reusable_transformation(mapplet_data)
+                            # Save file metadata
+                            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else None
+                            graph_store.save_file_metadata(
+                                component_type="Mapplet",
+                                component_name=mapplet_name,
+                                file_path=file_path,
+                                filename=filename,
+                                file_size=file_size,
+                                parsed_at=datetime.now().isoformat()
+                            )
+                            print(f"   💾 Saved to Neo4j: {mapplet_name}")
+                        except Exception as e:
+                            print(f"   ⚠️  Failed to save to Neo4j: {e}")
+                    
+                    print(f"   ✅ Parsed mapplet: {mapplet_name}")
+                    print(f"   💾 Saved to: {output_file}")
+                    
+                    results["parsed"].append({
+                        "file": filename,
+                        "type": file_type,
+                        "mapplet_name": mapplet_name,
+                        "output_file": output_file
+                    })
+                    results["by_type"]["mapplets"].append(mapplet_name)
+                
+                elif file_type == "mapping":
                     # Parse mapping to canonical model
                     parser = MappingParser(file_path)
                     raw_mapping = parser.parse()
                     canonical_model = normalizer.normalize(raw_mapping)
-                    mapping_name = canonical_model.get("mapping_name", filename.replace(".xml", ""))
+                    mapping_name = canonical_model.get("transformation_name", canonical_model.get("mapping_name", filename.replace(".xml", "")))
                     
                     # Save canonical model
                     output_file = os.path.join(output_dir, f"{mapping_name}.json")
@@ -238,7 +305,7 @@ class TestFlow:
                     # Save to Neo4j if graph store is enabled
                     if graph_store:
                         try:
-                            graph_store.save_mapping(canonical_model)
+                            graph_store.save_transformation(canonical_model)
                             # Save file metadata
                             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else None
                             graph_store.save_file_metadata(
@@ -278,7 +345,7 @@ class TestFlow:
                     # Save to Neo4j if graph store is enabled
                     if graph_store:
                         try:
-                            graph_store.save_workflow(workflow_data)
+                            graph_store.save_pipeline(workflow_data)
                             # Save file metadata
                             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else None
                             graph_store.save_file_metadata(
@@ -310,6 +377,11 @@ class TestFlow:
                     session_data = parser.parse()
                     session_name = session_data.get("name", filename.replace(".xml", ""))
                     
+                    # Debug: Check session data
+                    mapping_name = session_data.get("transformation_name") or session_data.get("mapping") or session_data.get("mapping_name")
+                    print(f"   🔍 Debug: Session '{session_name}' has mapping: {mapping_name}")
+                    print(f"   🔍 Debug: Session data keys: {list(session_data.keys())}")
+                    
                     # Save session structure
                     output_file = os.path.join(output_dir, f"{session_name}_session.json")
                     with open(output_file, 'w') as f:
@@ -322,11 +394,13 @@ class TestFlow:
                             normalized_session = {
                                 "name": session_name,
                                 "type": "SESSION",
-                                "mapping_name": session_data.get("mapping") or session_data.get("mapping_name"),
+                                "transformation_name": mapping_name,
+                                "mapping_name": mapping_name,  # For backward compatibility
                                 "config": session_data.get("config", {})
                             }
+                            print(f"   🔍 Debug: Saving session to Neo4j with mapping_name: {mapping_name}")
                             # Workflow relationship will be built in second pass
-                            graph_store.save_session(normalized_session, None)
+                            graph_store.save_task(normalized_session, None)
                             # Save file metadata
                             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else None
                             graph_store.save_file_metadata(
@@ -368,7 +442,7 @@ class TestFlow:
                         try:
                             # Try to find workflow that contains this worklet
                             workflow_name = None  # Would need to be determined from workflow files
-                            graph_store.save_worklet(worklet_data, workflow_name)
+                            graph_store.save_sub_pipeline(worklet_data, workflow_name)
                             # Save file metadata
                             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else None
                             graph_store.save_file_metadata(
@@ -432,7 +506,7 @@ class TestFlow:
                                             session_data["config"] = loaded_session.get("config", {})
                                     
                                     # Save/update session and link to workflow
-                                    graph_store.save_session(session_data, workflow_name)
+                                    graph_store.save_task(session_data, workflow_name)
                                     print(f"      ✅ Linked task {task_name} to workflow {workflow_name}")
                                 except Exception as e:
                                     print(f"      ⚠️  Could not link session {task_name} to workflow {workflow_name}: {e}")
@@ -517,10 +591,10 @@ class TestFlow:
                                     
                                     # Save/update worklet and link to workflow
                                     # This will also create sessions from tasks inside the worklet
-                                    graph_store.save_worklet(worklet_data, workflow_name)
+                                    graph_store.save_sub_pipeline(worklet_data, workflow_name)
                                     
                                     # Save worklet first (this will create sessions from tasks if worklet_data has tasks)
-                                    graph_store.save_worklet(worklet_data, workflow_name)
+                                    graph_store.save_sub_pipeline(worklet_data, workflow_name)
                                     
                                     # Now ensure sessions inside the worklet are created and linked
                                     # The save_worklet method should handle this, but let's also do it explicitly
@@ -563,7 +637,7 @@ class TestFlow:
                                                 try:
                                                     # The session should already be linked to worklet by save_worklet
                                                     # But let's ensure it exists
-                                                    graph_store.save_session(session_data, None)  # Don't link to workflow, worklet handles it
+                                                    graph_store.save_task(session_data, None)  # Don't link to pipeline, sub pipeline handles it
                                                     print(f"      ✅ Ensured task {worklet_task_name} exists and linked to worklet {worklet_name}")
                                                 except Exception as e:
                                                     print(f"      ⚠️  Could not ensure session {worklet_task_name} in worklet {worklet_name}: {e}")
@@ -589,6 +663,7 @@ class TestFlow:
             json.dump(results, f, indent=2, default=str)
         
         print(f"\n📊 Summary:")
+        print(f"   Mapplets: {len(results['by_type']['mapplets'])}")
         print(f"   Mappings (canonical models): {len(results['by_type']['mappings'])}")
         print(f"   Workflows: {len(results['by_type']['workflows'])}")
         print(f"   Sessions: {len(results['by_type']['sessions'])}")
@@ -608,7 +683,10 @@ class TestFlow:
             File type: 'mapping', 'workflow', 'session', or 'worklet'
         """
         filename_lower = filename.lower()
-        if "mapping" in filename_lower:
+        # Check mapplet BEFORE mapping (since mapplet contains "mapping" in the name)
+        if "mapplet" in filename_lower:
+            return "mapplet"
+        elif "mapping" in filename_lower:
             return "mapping"
         elif "workflow" in filename_lower:
             return "workflow"
@@ -639,9 +717,18 @@ class TestFlow:
         parsed_files = glob.glob(os.path.join(parsed_dir, "*.json"))
         parsed_files = [f for f in parsed_files if not f.endswith("_summary.json")]
         
+        print(f"📁 Found {len(parsed_files)} parsed file(s) to process")
+        print(f"   Parsed directory: {parsed_dir}")
+        print(f"   Output directory: {output_dir}")
+        
         if not parsed_files:
             print("⚠️  No parsed files found")
             return {"enhanced": [], "failed": []}
+        
+        # Debug: List all files
+        print(f"\n📋 Files to process:")
+        for f in parsed_files:
+            print(f"   - {os.path.basename(f)}")
         
         try:
             from ai_agents import AgentOrchestrator
@@ -664,27 +751,75 @@ class TestFlow:
                 with open(json_file, 'r') as f:
                     canonical_model = json.load(f)
                 
+                # Debug: Show model structure
+                has_mapping_name = "mapping_name" in canonical_model
+                has_transformations = "transformations" in canonical_model
+                has_sources = "sources" in canonical_model
+                has_targets = "targets" in canonical_model
+                model_keys = list(canonical_model.keys())[:10]  # First 10 keys for debug
+                print(f"   🔍 Debug: has_mapping_name={has_mapping_name}, has_transformations={has_transformations}, has_sources={has_sources}, has_targets={has_targets}")
+                print(f"   🔍 Debug: Model keys (first 10): {model_keys}")
+                
                 # Skip non-canonical models (worklets, sessions, workflows without mapping_name)
                 # Only enhance mappings which have a proper canonical model structure
                 if not canonical_model or not isinstance(canonical_model, dict):
                     print(f"   ⚠️  Skipping: Not a valid canonical model (empty or invalid structure)")
+                    print(f"   🔍 Debug: canonical_model type={type(canonical_model)}, is_dict={isinstance(canonical_model, dict)}")
                     continue
                 
                 # Check if it's a canonical model (has mapping_name or transformations)
+                # Mapplets have transformations but may not have mapping_name
+                # Mappings have both mapping_name and transformations
                 if "mapping_name" not in canonical_model and "transformations" not in canonical_model:
-                    # This might be a workflow/worklet/session structure, skip it
-                    print(f"   ⚠️  Skipping: Not a canonical mapping model (workflow/worklet/session structure)")
+                    # This might be a workflow/worklet/session structure
+                    # Copy it to parse_ai without enhancement (they don't need AI enhancement)
+                    if filename.endswith("_workflow.json") or filename.endswith("_session.json") or filename.endswith("_worklet.json"):
+                        output_file = os.path.join(output_dir, filename)
+                        with open(output_file, 'w') as f:
+                            json.dump(canonical_model, f, indent=2, default=str)
+                        print(f"   ✅ Copied (no enhancement needed): {filename}")
+                        print(f"   💾 Saved to: {output_file}")
+                        results["enhanced"].append({
+                            "file": filename,
+                            "mapping_name": canonical_model.get("name", filename),
+                            "output_file": output_file,
+                            "enhanced": False
+                        })
+                    else:
+                        print(f"   ⚠️  Skipping: Not a canonical mapping model (workflow/worklet/session structure)")
+                        print(f"   🔍 Debug: Missing both mapping_name and transformations - likely workflow/worklet/session")
                     continue
                 
                 # Enhance with AI
                 enhanced = orchestrator.enhance_model(canonical_model, use_llm=True)
                 
                 # Save enhanced model
-                mapping_name = enhanced.get("mapping_name", filename.replace(".json", "").replace("_workflow", "").replace("_worklet", "").replace("_session", ""))
-                output_file = os.path.join(output_dir, f"{mapping_name}_enhanced.json")
+                mapping_name = enhanced.get("transformation_name") or enhanced.get("mapping_name") or enhanced.get("name") or filename.replace(".json", "").replace("_workflow", "").replace("_worklet", "").replace("_session", "").replace("_mapplet", "")
+                # For mapplets, preserve the _mapplet suffix in the output filename
+                if "_mapplet" in filename:
+                    output_file = os.path.join(output_dir, f"{mapping_name}_mapplet_enhanced.json")
+                else:
+                    output_file = os.path.join(output_dir, f"{mapping_name}_enhanced.json")
                 
                 with open(output_file, 'w') as f:
                     json.dump(enhanced, f, indent=2, default=str)
+                
+                # Save enhanced model to version store for code generation
+                try:
+                    from config import settings
+                    enable_graph = getattr(settings, 'enable_graph_store', False) or os.getenv('ENABLE_GRAPH_STORE', 'false').lower() == 'true'
+                    if enable_graph:
+                        graph_store = GraphStore()
+                        graph_first = getattr(settings, 'graph_first', False) or os.getenv('GRAPH_FIRST', 'false').lower() == 'true'
+                        version_store = VersionStore(graph_store=graph_store, graph_first=graph_first)
+                        if version_store:
+                            try:
+                                version_store.save(mapping_name, enhanced)
+                                print(f"   💾 Saved enhanced model to version store: {mapping_name}")
+                            except Exception as e:
+                                print(f"   ⚠️  Failed to save to version store: {e}")
+                except Exception as e:
+                    print(f"   ⚠️  Version store not available: {e}")
                 
                 print(f"   ✅ Enhanced: {mapping_name}")
                 print(f"   💾 Saved to: {output_file}")
@@ -692,7 +827,8 @@ class TestFlow:
                 results["enhanced"].append({
                     "file": filename,
                     "mapping_name": mapping_name,
-                    "output_file": output_file
+                    "output_file": output_file,
+                    "enhanced": True
                 })
                 
             except Exception as e:
@@ -965,7 +1101,7 @@ class TestFlow:
         """Convert canonical model to Mermaid diagram."""
         lines = ["graph TD"]
         
-        mapping_name = model.get("mapping_name", "Unknown")
+        mapping_name = model.get("transformation_name") or model.get("mapping_name", "Unknown")
         
         # Sources
         for source in model.get("sources", []):
@@ -1043,7 +1179,7 @@ class TestFlow:
         if workflow_aware and graph_store and graph_queries:
             try:
                 # Get all workflows from Neo4j
-                workflows = graph_queries.list_workflows()
+                workflows = graph_queries.list_pipelines()
                 
                 if workflows:
                     print(f"\n📋 Found {len(workflows)} workflow(s) in graph")
@@ -1136,28 +1272,84 @@ class TestFlow:
                 
                 # Process transformations (stored as Mapping nodes in Neo4j, but use generic Transformation terminology)
                 transformations = task.get("transformations", [])
+                print(f"      🔍 Debug: Task '{task_name}' has {len(transformations)} transformation(s)")
+                if transformations:
+                    print(f"      🔍 Debug: Transformation details:")
+                    for idx, t in enumerate(transformations):
+                        print(f"         [{idx}] name={t.get('name')}, transformation_name={t.get('transformation_name')}, complexity={t.get('complexity')}")
+                
+                if not transformations:
+                    print(f"      ⚠️  No transformations found for task: {task_name}")
+                    print(f"      🔍 Debug: Task structure keys: {list(task.keys())}")
+                    print(f"      🔍 Debug: Task type: {task.get('type')}")
+                else:
+                    print(f"      📋 Found {len(transformations)} transformation(s) for task: {task_name}")
                 transformations_dir = os.path.join(task_dir, "transformations")
                 os.makedirs(transformations_dir, exist_ok=True)
                 
                 for transformation_info in transformations:
                     # Get transformation name (stored as mapping_name in Neo4j)
+                    # transformation_name comes from mapping_name in Neo4j, but fallback to name if not available
                     transformation_name = transformation_info.get("transformation_name") or transformation_info.get("name")
                     if not transformation_name:
+                        print(f"      ⚠️  Skipping transformation with no name: {transformation_info}")
+                        print(f"      🔍 Debug: transformation_info keys: {list(transformation_info.keys())}")
                         continue
+                    print(f"      🔍 Processing transformation: name={transformation_info.get('name')}, transformation_name={transformation_info.get('transformation_name')}, resolved={transformation_name}")
                     transformation_name_clean = transformation_name.lower().replace("m_", "").replace(" ", "_")
                     
                     print(f"      📋 Generating code for transformation: {transformation_name}")
+                    print(f"      🔍 Debug: Will search for canonical model with name: {transformation_name}")
+                    print(f"      🔍 Debug: Expected files: {transformation_name}.json or {transformation_name}_enhanced.json")
                     
                     # Load canonical model
                     canonical_model = None
+                    print(f"      🔍 Debug: Attempting to load canonical model for: {transformation_name}")
                     try:
                         # Try loading from version store (Neo4j or JSON)
+                        print(f"      🔍 Debug: Trying version_store.load('{transformation_name}')")
                         canonical_model = version_store.load(transformation_name)
-                        if not canonical_model:
+                        if canonical_model:
+                            print(f"      ✅ Loaded from version store")
+                        else:
+                            print(f"      🔍 Debug: Not found in version store, trying file-based load")
                             # Try loading from JSON files as fallback
                             canonical_model = self._load_canonical_model_from_files(transformation_name)
+                            if canonical_model:
+                                print(f"      ✅ Loaded from files")
+                            else:
+                                print(f"      ⚠️  Not found in files either")
+                                # For mapplets, try loading from parse_ai with _mapplet_enhanced suffix
+                                if transformation_name.startswith("MPL_") or "_mapplet" in transformation_name.lower():
+                                    print(f"      🔍 Debug: Trying mapplet-specific file names")
+                                    project_root = Path(__file__).parent.parent
+                                    parse_ai_dir = os.path.join(project_root, "test_log", "parse_ai")
+                                    parsed_dir = os.path.join(project_root, "test_log", "parsed")
+                                    mapplet_files = [
+                                        os.path.join(parse_ai_dir, f"{transformation_name}_mapplet_enhanced.json"),
+                                        os.path.join(parse_ai_dir, f"{transformation_name}_enhanced.json"),
+                                        os.path.join(parsed_dir, f"{transformation_name}_mapplet.json"),
+                                        os.path.join(parsed_dir, f"{transformation_name}.json"),
+                                    ]
+                                    for mapplet_file in mapplet_files:
+                                        if os.path.exists(mapplet_file):
+                                            print(f"      🔍 Debug: Found mapplet file: {mapplet_file}")
+                                            with open(mapplet_file, 'r') as f:
+                                                canonical_model = json.load(f)
+                                                # Save to version store for future use
+                                                if version_store:
+                                                    try:
+                                                        version_store.save(transformation_name, canonical_model)
+                                                        print(f"      💾 Saved mapplet to version store: {transformation_name}")
+                                                    except Exception as e:
+                                                        print(f"      ⚠️  Failed to save to version store: {e}")
+                                                print(f"      ✅ Loaded mapplet from: {mapplet_file}")
+                                                break
                     except Exception as e:
                         print(f"      ⚠️  Failed to load canonical model: {e}")
+                        import traceback
+                        print(f"      🔍 Debug: Exception traceback:")
+                        traceback.print_exc()
                         results["failed"].append({
                             "transformation": transformation_name,
                             "workflow": workflow_name,
@@ -1168,6 +1360,8 @@ class TestFlow:
                     
                     if not canonical_model:
                         print(f"      ⚠️  Canonical model not found: {transformation_name}")
+                        print(f"      🔍 Debug: Checked version store and file system")
+                        print(f"      🔍 Debug: Expected files: {transformation_name}.json or {transformation_name}_enhanced.json")
                         continue
                     
                     # Store for reusable code detection
@@ -1214,10 +1408,19 @@ class TestFlow:
                                 except Exception:
                                     pass  # Quality check is optional
                                 
+                                # Convert absolute path to relative path from project root
+                                abs_path = os.path.abspath(code_file)
+                                project_root = Path(__file__).parent.parent
+                                try:
+                                    rel_path = os.path.relpath(abs_path, project_root)
+                                except ValueError:
+                                    # If paths are on different drives (Windows), use absolute path
+                                    rel_path = abs_path
+                                
                                 graph_store.save_code_metadata(
                                     mapping_name=transformation_name,
                                     code_type=code_type,
-                                    file_path=os.path.abspath(code_file),
+                                    file_path=rel_path,  # Use relative path
                                     language=language,
                                     quality_score=quality_score
                                 )
@@ -1279,6 +1482,23 @@ class TestFlow:
         print(f"   Failed: {len(results['failed'])}")
         print(f"   Shared code files: {len(results['shared_code'])}")
         
+        # Debug: Show detailed breakdown
+        print(f"\n🔍 Debug: Detailed breakdown:")
+        print(f"   Generated transformation code files: {len([r for r in results['generated'] if r.get('type') == 'pyspark'])}")
+        print(f"   Generated orchestration files: {len([r for r in results['generated'] if 'orchestration' in r.get('file', '')])}")
+        if results['generated']:
+            print(f"   🔍 Debug: Generated files list:")
+            for r in results['generated'][:10]:  # Show first 10
+                print(f"      - {r.get('file', 'N/A')} (type: {r.get('type', 'N/A')}, mapping: {r.get('mapping', 'N/A')})")
+            if len(results['generated']) > 10:
+                print(f"      ... and {len(results['generated']) - 10} more")
+        if results['failed']:
+            print(f"   🔍 Debug: Failed files:")
+            for r in results['failed'][:10]:  # Show first 10
+                print(f"      - {r.get('mapping', r.get('transformation', 'N/A'))}: {r.get('error', 'N/A')}")
+            if len(results['failed']) > 10:
+                print(f"      ... and {len(results['failed']) - 10} more")
+        
         return results
     
     def _generate_code_file_based(self, generators: Dict[str, Any], 
@@ -1331,7 +1551,7 @@ class TestFlow:
                     canonical_model = json.load(f)
                 
                 # Check if this is actually a canonical model (has mapping_name)
-                mapping_name = canonical_model.get("mapping_name")
+                mapping_name = canonical_model.get("transformation_name") or canonical_model.get("mapping_name")
                 if not mapping_name:
                     print(f"   ⚠️  Skipping {filename} - not a canonical mapping model (no mapping_name)")
                     continue
@@ -1384,10 +1604,19 @@ class TestFlow:
                                 except Exception:
                                     pass  # Quality check is optional
                                 
+                                # Convert absolute path to relative path from project root
+                                abs_path = os.path.abspath(code_file)
+                                project_root = Path(__file__).parent.parent
+                                try:
+                                    rel_path = os.path.relpath(abs_path, project_root)
+                                except ValueError:
+                                    # If paths are on different drives (Windows), use absolute path
+                                    rel_path = abs_path
+                                
                                 graph_store.save_code_metadata(
                                     mapping_name=mapping_name,
                                     code_type=code_type,
-                                    file_path=os.path.abspath(code_file),
+                                    file_path=rel_path,  # Use relative path
                                     language=language,
                                     quality_score=quality_score
                                 )
@@ -1497,30 +1726,71 @@ class TestFlow:
         parse_ai_dir = os.path.join(project_root, "test_log", "parse_ai")
         parsed_dir = os.path.join(project_root, "test_log", "parsed")
         
+        print(f"      🔍 Debug: Searching for mapping '{mapping_name}' in:")
+        print(f"         - {parse_ai_dir}")
+        print(f"         - {parsed_dir}")
+        
         # Try enhanced first, then parsed
         for dir_path in [parse_ai_dir, parsed_dir]:
-            if os.path.exists(dir_path):
-                # Try exact match
-                for pattern in [f"{mapping_name}.json", f"{mapping_name}_enhanced.json"]:
-                    file_path = os.path.join(dir_path, pattern)
-                    if os.path.exists(file_path):
-                        try:
-                            with open(file_path, 'r') as f:
-                                return json.load(f)
-                        except Exception:
-                            continue
-                
-                # Try partial match
-                for file_path in glob.glob(os.path.join(dir_path, "*.json")):
-                    if mapping_name.lower() in os.path.basename(file_path).lower():
-                        try:
-                            with open(file_path, 'r') as f:
-                                model = json.load(f)
-                                if model.get("mapping_name") == mapping_name:
-                                    return model
-                        except Exception:
-                            continue
+            if not os.path.exists(dir_path):
+                print(f"      🔍 Debug: Directory does not exist: {dir_path}")
+                continue
+            
+            # Try exact match - handle both mappings and mapplets
+            patterns = [
+                f"{mapping_name}.json",
+                f"{mapping_name}_enhanced.json",
+                f"{mapping_name}_mapplet.json",
+                f"{mapping_name}_mapplet_enhanced.json"
+            ]
+            for pattern in patterns:
+                file_path = os.path.join(dir_path, pattern)
+                if os.path.exists(file_path):
+                    print(f"      ✅ Debug: Found exact match: {file_path}")
+                    try:
+                        with open(file_path, 'r') as f:
+                            model = json.load(f)
+                            # Save to version store for future use
+                            if version_store and dir_path == parse_ai_dir:
+                                try:
+                                    version_store.save(mapping_name, model)
+                                except Exception:
+                                    pass
+                            return model
+                    except Exception as e:
+                        print(f"      ⚠️  Debug: Failed to load {file_path}: {e}")
+                        continue
+                else:
+                    print(f"      🔍 Debug: Not found: {file_path}")
+            
+            # Try partial match
+            print(f"      🔍 Debug: Trying partial match in {dir_path}")
+            matching_files = []
+            for file_path in glob.glob(os.path.join(dir_path, "*.json")):
+                if mapping_name.lower() in os.path.basename(file_path).lower():
+                    matching_files.append(file_path)
+            
+            if matching_files:
+                print(f"      🔍 Debug: Found {len(matching_files)} partial match(es):")
+                for f in matching_files:
+                    print(f"         - {f}")
+                # Try to load and verify mapping_name matches
+                for file_path in matching_files:
+                    try:
+                        with open(file_path, 'r') as f:
+                            model = json.load(f)
+                            if (model.get("transformation_name") or model.get("mapping_name")) == mapping_name:
+                                print(f"      ✅ Debug: Loading from: {file_path}")
+                                return model
+                            else:
+                                print(f"      🔍 Debug: Skipping {file_path} - mapping_name mismatch: {model.get('mapping_name')} != {mapping_name}")
+                    except Exception as e:
+                        print(f"      ⚠️  Debug: Failed to load {file_path}: {e}")
+                        continue
+            else:
+                print(f"      🔍 Debug: No partial matches found")
         
+        print(f"      ❌ Debug: Mapping '{mapping_name}' not found in any directory")
         return None
     
     def _generate_workflow_readme(self, workflow_structure: Dict[str, Any], workflow_dir: str):
@@ -1761,7 +2031,8 @@ class TestFlow:
                                     if mapping_name:
                                         mappings.append({
                                             "name": mapping_name,
-                                            "mapping_name": mapping_name,
+                                            "transformation_name": mapping_name,
+                                "mapping_name": mapping_name,  # For backward compatibility
                                             "complexity": mapping_data.get("_performance_metadata", {}).get("estimated_complexity", "UNKNOWN")
                                         })
                                 except Exception:
@@ -1958,9 +2229,33 @@ class TestFlow:
         for ext in ["*.py", "*.sql"]:
             code_files.extend(glob.glob(os.path.join(generated_dir, "**", ext), recursive=True))
         
+        print(f"📁 Searching for code files in: {generated_dir}")
+        print(f"📁 Found {len(code_files)} code file(s) to review")
+        
         if not code_files:
             print("⚠️  No generated code files found")
+            print(f"   🔍 Debug: Searched in: {generated_dir}")
+            print(f"   🔍 Debug: Checking if directory exists: {os.path.exists(generated_dir)}")
+            if os.path.exists(generated_dir):
+                # List what's actually in the directory
+                all_files = []
+                for root, dirs, files in os.walk(generated_dir):
+                    for file in files:
+                        all_files.append(os.path.relpath(os.path.join(root, file), generated_dir))
+                print(f"   🔍 Debug: Found {len(all_files)} total file(s) in directory:")
+                for f in all_files[:20]:  # Show first 20
+                    print(f"      - {f}")
+                if len(all_files) > 20:
+                    print(f"      ... and {len(all_files) - 20} more")
             return {"reviewed": [], "failed": []}
+        
+        # Debug: List files to be reviewed
+        print(f"\n📋 Files to review:")
+        for f in code_files[:20]:  # Show first 20
+            rel_path = os.path.relpath(f, generated_dir)
+            print(f"   - {rel_path}")
+        if len(code_files) > 20:
+            print(f"   ... and {len(code_files) - 20} more")
         
         results = {"reviewed": [], "failed": []}
         
@@ -1995,9 +2290,31 @@ class TestFlow:
                 with open(review_file, 'w') as f:
                     json.dump(review, f, indent=2, default=str)
                 
+                # Always determine the correct filename based on detected code type
+                # This ensures consistent naming in generated_ai regardless of whether fixes are needed
+                base_name = os.path.splitext(filename)[0]
+                # Remove existing type suffix if present
+                for suffix in ["_pyspark", "_dlt", "_sql"]:
+                    if base_name.endswith(suffix):
+                        base_name = base_name[:-len(suffix)]
+                        break
+                
+                # Determine correct filename based on detected code type
+                if actual_code_type == "python":
+                    output_filename = f"{base_name}_pyspark.py"
+                elif actual_code_type == "dlt":
+                    output_filename = f"{base_name}_dlt.py"
+                elif actual_code_type == "sql":
+                    output_filename = f"{base_name}_sql.sql"
+                else:
+                    # Keep original filename if type detection failed
+                    output_filename = filename
+                
                 # Fix code if needed
                 fixed_code = code
-                if review.get("needs_fix") and review.get("issues"):
+                needs_fix = review.get("needs_fix", False) and review.get("issues")
+                
+                if needs_fix:
                     try:
                         fix_result = orchestrator.fix_code(code, review.get("issues", []))
                         fixed_code = fix_result.get("fixed_code", code)
@@ -2005,39 +2322,47 @@ class TestFlow:
                         # Re-detect code type after fix (may have changed)
                         actual_code_type_after_fix = self._detect_code_type(fixed_code, filename)
                         
-                        # Determine correct filename based on actual code type
-                        base_name = os.path.splitext(filename)[0]
-                        # Remove existing type suffix if present
-                        for suffix in ["_pyspark", "_dlt", "_sql"]:
-                            if base_name.endswith(suffix):
-                                base_name = base_name[:-len(suffix)]
-                                break
-                        
-                        # Set correct extension based on actual code type
-                        if actual_code_type_after_fix == "python":
-                            fixed_filename = f"{base_name}_pyspark.py"
-                        elif actual_code_type_after_fix == "dlt":
-                            fixed_filename = f"{base_name}_dlt.py"
-                        else:
-                            # Keep original extension if still SQL
-                            fixed_filename = f"{base_name}_sql.sql"
+                        # Update filename if code type changed after fix
+                        if actual_code_type_after_fix != actual_code_type:
+                            base_name_after_fix = os.path.splitext(filename)[0]
+                            for suffix in ["_pyspark", "_dlt", "_sql"]:
+                                if base_name_after_fix.endswith(suffix):
+                                    base_name_after_fix = base_name_after_fix[:-len(suffix)]
+                                    break
+                            
+                            if actual_code_type_after_fix == "python":
+                                output_filename = f"{base_name_after_fix}_pyspark.py"
+                            elif actual_code_type_after_fix == "dlt":
+                                output_filename = f"{base_name_after_fix}_dlt.py"
+                            else:
+                                output_filename = f"{base_name_after_fix}_sql.sql"
+                            
+                            if output_filename != filename:
+                                print(f"   ⚠️  Code type changed after fix: {filename} -> {output_filename}")
                         
                         # Save fixed code with correct filename
-                        fixed_file = os.path.join(output_subdir, fixed_filename)
+                        fixed_file = os.path.join(output_subdir, output_filename)
                         with open(fixed_file, 'w') as f:
                             f.write(fixed_code)
-                        
-                        # If filename changed, note it
-                        if fixed_filename != filename:
-                            print(f"   ⚠️  Code type changed: {original_ext} -> .py (renamed to {fixed_filename})")
                         
                         print(f"   ✅ Fixed code saved to: {fixed_file}")
                     except Exception as e:
                         print(f"   ⚠️  Code fix failed: {e}")
-                        # Save original code even if fix failed
-                        fixed_file = os.path.join(output_subdir, filename)
-                        with open(fixed_file, 'w') as f:
+                        # Save original code even if fix failed, but with correct filename
+                        code_file = os.path.join(output_subdir, output_filename)
+                        with open(code_file, 'w') as f:
                             f.write(code)
+                        print(f"   ✅ Original code saved to: {code_file}")
+                else:
+                    # File doesn't need fixing - copy original code to generated_ai with correct filename
+                    # This ensures generated_ai is the source of truth with all code files
+                    code_file = os.path.join(output_subdir, output_filename)
+                    with open(code_file, 'w') as f:
+                        f.write(code)
+                    if output_filename != filename:
+                        print(f"   ✅ Code copied to: {code_file} (renamed from {filename}, no fixes needed)")
+                    else:
+                        print(f"   ✅ Code copied to: {code_file} (no fixes needed)")
                 
                 print(f"   ✅ Review saved to: {review_file}")
                 print(f"   📊 Issues found: {len(review.get('issues', []))}")
@@ -2060,6 +2385,31 @@ class TestFlow:
             json.dump(results, f, indent=2, default=str)
         
         print(f"\n📊 Summary: {len(results['reviewed'])} reviewed, {len(results['failed'])} failed")
+        
+        # Debug: Show detailed breakdown
+        if results['reviewed']:
+            print(f"\n🔍 Debug: Reviewed files breakdown:")
+            orchestration_reviewed = [r for r in results['reviewed'] if 'orchestration' in r.get('file', '')]
+            transformation_reviewed = [r for r in results['reviewed'] if 'transformations' in r.get('file', '')]
+            other_reviewed = [r for r in results['reviewed'] if 'orchestration' not in r.get('file', '') and 'transformations' not in r.get('file', '')]
+            print(f"   Orchestration files reviewed: {len(orchestration_reviewed)}")
+            print(f"   Transformation files reviewed: {len(transformation_reviewed)}")
+            print(f"   Other files reviewed: {len(other_reviewed)}")
+            if transformation_reviewed:
+                print(f"   🔍 Debug: Transformation files reviewed:")
+                for r in transformation_reviewed[:10]:
+                    print(f"      - {r.get('file', 'N/A')}")
+                if len(transformation_reviewed) > 10:
+                    print(f"      ... and {len(transformation_reviewed) - 10} more")
+            elif orchestration_reviewed:
+                print(f"   ⚠️  Warning: Only orchestration files were reviewed, no transformation files found")
+                print(f"   🔍 Debug: This suggests transformation code was not generated")
+        
+        if results['failed']:
+            print(f"\n🔍 Debug: Failed reviews:")
+            for r in results['failed'][:10]:
+                print(f"      - {r.get('file', 'N/A')}: {r.get('error', 'N/A')}")
+        
         return results
     
     def run_assessment(self, output_dir: str) -> Dict[str, Any]:

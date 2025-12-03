@@ -73,7 +73,7 @@ class WavePlanner:
             "components": [],
             "total_effort_days": 0.0,
             "complexity_distribution": {"LOW": 0, "MEDIUM": 0, "HIGH": 0},
-            "migrated_components": set()
+            "migrated_components": []  # Changed from set() to list for JSON serialization
         }
         
         for component in prioritized:
@@ -90,7 +90,7 @@ class WavePlanner:
                 ]
                 
                 dependencies_satisfied = all(
-                    dep in current_wave["migrated_components"]
+                    dep in current_wave["migrated_components"]  # Works with list too
                     for dep in depends_on
                 )
                 
@@ -102,7 +102,7 @@ class WavePlanner:
                         "components": [],
                         "total_effort_days": 0.0,
                         "complexity_distribution": {"LOW": 0, "MEDIUM": 0, "HIGH": 0},
-                        "migrated_components": set(current_wave["migrated_components"])
+                        "migrated_components": list(current_wave["migrated_components"])  # Convert to list
                     }
             
             # Check wave size limit
@@ -113,7 +113,7 @@ class WavePlanner:
                     "components": [],
                     "total_effort_days": 0.0,
                     "complexity_distribution": {"LOW": 0, "MEDIUM": 0, "HIGH": 0},
-                    "migrated_components": set(current_wave["migrated_components"])
+                    "migrated_components": list(current_wave["migrated_components"])  # Convert to list
                 }
             
             # Add component to current wave
@@ -122,7 +122,8 @@ class WavePlanner:
             complexity = component.get("complexity", "MEDIUM")
             current_wave["complexity_distribution"][complexity] = \
                 current_wave["complexity_distribution"].get(complexity, 0) + 1
-            current_wave["migrated_components"].add(component_name)
+            if component_name not in current_wave["migrated_components"]:
+                current_wave["migrated_components"].append(component_name)  # Changed from set.add() to list.append()
         
         # Add final wave
         if current_wave["components"]:

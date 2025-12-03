@@ -22,7 +22,8 @@ class MappingNormalizer:
         
         Returns canonical model with structure:
         {
-            "mapping_name": str,
+            "transformation_name": str,
+            "source_component_type": "mapping",
             "sources": [...],
             "targets": [...],
             "transformations": [...],
@@ -32,8 +33,8 @@ class MappingNormalizer:
             "incremental_keys": [...]
         }
         """
-        mapping_name = mapping_raw.get("name", "unknown")
-        logger.info(f"Normalizing mapping: {mapping_name}")
+        transformation_name = mapping_raw.get("name", "unknown")
+        logger.info(f"Normalizing transformation: {transformation_name}")
         
         try:
             # Normalize sources
@@ -64,22 +65,52 @@ class MappingNormalizer:
             incremental_keys = self._detect_incremental_keys(mapping_raw)
             logger.debug(f"Detected {len(incremental_keys)} incremental keys")
             
+            # Calculate complexity metrics
+            try:
+                from src.normalizer.complexity_calculator import ComplexityCalculator
+                complexity_calc = ComplexityCalculator()
+                complexity_metrics = complexity_calc.calculate({
+                    "transformations": transformations,
+                    "connectors": connectors,
+                    "sources": sources,
+                    "targets": targets
+                })
+            except Exception as e:
+                logger.warning(f"Failed to calculate complexity metrics: {e}")
+                complexity_metrics = {}
+            
+            # Detect semantic tags
+            try:
+                from src.normalizer.semantic_tag_detector import SemanticTagDetector
+                tag_detector = SemanticTagDetector()
+                semantic_tags = tag_detector.detect_tags({
+                    "transformations": transformations,
+                    "scd_type": scd_info.get("type", "NONE"),
+                    "incremental_keys": incremental_keys
+                })
+            except Exception as e:
+                logger.warning(f"Failed to detect semantic tags: {e}")
+                semantic_tags = []
+            
             canonical_model = {
-                "mapping_name": mapping_name,
+                "transformation_name": transformation_name,
+                "source_component_type": "mapping",
                 "sources": sources,
                 "targets": targets,
                 "transformations": transformations,
                 "connectors": connectors,
                 "lineage": lineage,
                 "scd_type": scd_info.get("type", "NONE"),
-                "incremental_keys": incremental_keys
+                "incremental_keys": incremental_keys,
+                "complexity_metrics": complexity_metrics,
+                "semantic_tags": semantic_tags
             }
             
-            logger.info(f"Successfully normalized mapping: {mapping_name}")
+            logger.info(f"Successfully normalized transformation: {transformation_name}")
             return canonical_model
             
         except Exception as e:
-            logger.error(f"Error normalizing mapping: {mapping_name}", error=e)
+            logger.error(f"Error normalizing transformation: {transformation_name}", error=e)
             raise
     
     def _normalize_sources(self, sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -112,12 +143,32 @@ class MappingNormalizer:
         for trans in transformations:
             trans_type = trans.get("type", "").upper()
             
+            # Handle mapplet instances
+            if trans_type == "MAPPLET_INSTANCE":
+                normalized.append(self._normalize_mapplet_instance(trans))
+                continue
+            
+            # Handle custom transformations (manual intervention required)
+            if trans_type == "CUSTOM_TRANSFORMATION":
+                normalized.append(self._normalize_custom_transformation(trans))
+                continue
+            
+            # Handle stored procedures (manual intervention may be required)
+            if trans_type == "STORED_PROCEDURE":
+                normalized.append(self._normalize_stored_procedure(trans))
+                continue
+            
             # Base transformation structure
             normalized_trans = {
                 "type": trans_type,
                 "name": trans.get("name", ""),
                 "ports": trans.get("ports", [])
             }
+            
+            # Add reusable transformation metadata
+            if trans.get("is_reusable", False):
+                normalized_trans["is_reusable"] = True
+                normalized_trans["reusable_name"] = trans.get("reusable_name", trans.get("name", ""))
             
             # Add type-specific attributes
             if trans_type == "LOOKUP":
@@ -169,6 +220,71 @@ class MappingNormalizer:
             normalized.append(normalized_trans)
         
         return normalized
+    
+    def _normalize_mapplet_instance(self, trans: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize mapplet instance transformation.
+        
+        Mapplet instances reference reusable transformations and need to be resolved
+        during code generation by inlining the reusable transformation transformations.
+        """
+        return {
+            "type": "MAPPLET_INSTANCE",
+            "name": trans.get("name", ""),
+            "reusable_transformation_ref": trans.get("mapplet_ref", trans.get("reusable_transformation_ref", "")),
+            "input_port_mappings": trans.get("input_port_mappings", {}),
+            "output_port_mappings": trans.get("output_port_mappings", {}),
+            "requires_resolution": True,
+            "resolution_strategy": "inline"  # Inline reusable transformation transformations during code generation
+        }
+    
+    def _normalize_custom_transformation(self, trans: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize custom/Java transformation.
+        
+        These require manual intervention as they contain custom code.
+        """
+        return {
+            "type": "CUSTOM_TRANSFORMATION",
+            "name": trans.get("name", ""),
+            "ports": trans.get("ports", []),
+            "requires_manual_intervention": True,
+            "manual_intervention_reason": trans.get("manual_intervention_reason", 
+                "Custom transformation requires manual code review and migration"),
+            "custom_type": trans.get("custom_type", "Unknown"),
+            "code_reference": trans.get("code_reference"),
+            "class_name": trans.get("class_name"),
+            "jar_file": trans.get("jar_file"),
+            "placeholder": {
+                "description": f"Custom transformation '{trans.get('name', '')}' requires manual migration",
+                "suggested_approach": "Review custom code and implement equivalent logic in target platform",
+                "code_location": trans.get("code_reference") or trans.get("jar_file")
+            }
+        }
+    
+    def _normalize_stored_procedure(self, trans: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize stored procedure transformation.
+        
+        Stored procedures may require database-specific handling and manual intervention.
+        """
+        return {
+            "type": "STORED_PROCEDURE",
+            "name": trans.get("name", ""),
+            "ports": trans.get("ports", []),
+            "requires_manual_intervention": trans.get("requires_manual_intervention", True),
+            "manual_intervention_reason": trans.get("manual_intervention_reason",
+                "Stored procedure requires database-specific handling and may need manual migration"),
+            "procedure_name": trans.get("procedure_name", ""),
+            "connection": trans.get("connection"),
+            "parameters": trans.get("parameters", []),
+            "return_type": trans.get("return_type", "resultset"),
+            "sql_query": trans.get("sql_query"),  # If called from Source Qualifier
+            "source_transformation": trans.get("source_transformation"),  # If called from SQ
+            "placeholder": {
+                "description": f"Stored procedure '{trans.get('procedure_name', '')}' requires database-specific handling",
+                "suggested_approach": "Review stored procedure logic and implement equivalent functionality in target platform",
+                "database_specific": True,
+                "connection_info": trans.get("connection")
+            }
+        }
     
     def _normalize_connectors(self, connectors: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Normalize connector definitions."""

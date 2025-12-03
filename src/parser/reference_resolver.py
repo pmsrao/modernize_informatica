@@ -5,7 +5,7 @@ from typing import Dict, List, Any, Optional, Set
 from pathlib import Path
 from utils.exceptions import ValidationError, ParsingError
 from utils.logger import get_logger
-from parser import MappingParser, WorkflowParser, SessionParser, WorkletParser
+from parser import MappingParser, WorkflowParser, SessionParser, WorkletParser, MappletParser
 from versioning.version_store import VersionStore
 
 logger = get_logger(__name__)
@@ -75,6 +75,57 @@ class ReferenceResolver:
         if file_path:
             self.file_paths[f"worklet:{worklet_name}"] = file_path
         logger.debug(f"Registered worklet: {worklet_name}")
+    
+    def register_mapplet(self, mapplet_name: str, mapplet_data: Dict[str, Any], file_path: Optional[str] = None):
+        """Register a parsed mapplet.
+        
+        Args:
+            mapplet_name: Name of the mapplet
+            mapplet_data: Parsed mapplet data
+            file_path: Optional file path
+        """
+        self.parsed_objects[f"mapplet:{mapplet_name}"] = mapplet_data
+        if file_path:
+            self.file_paths[f"mapplet:{mapplet_name}"] = file_path
+        logger.debug(f"Registered mapplet: {mapplet_name}")
+    
+    def register_reusable_transformation(self, reusable_name: str, transformation_data: Dict[str, Any]):
+        """Register a reusable transformation.
+        
+        Args:
+            reusable_name: Name of the reusable transformation
+            transformation_data: Parsed transformation data
+        """
+        self.parsed_objects[f"reusable:{reusable_name}"] = transformation_data
+        logger.debug(f"Registered reusable transformation: {reusable_name}")
+    
+    def resolve_reusable_transformations(self, mapping_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        """Resolve reusable transformation references in mapping.
+        
+        Args:
+            mapping_data: Mapping data with reusable transformation references
+            
+        Returns:
+            Dictionary of resolved reusable transformations keyed by reusable name
+        """
+        resolved_reusables = {}
+        transformations = mapping_data.get("transformations", [])
+        
+        for trans in transformations:
+            if trans.get("is_reusable", False):
+                reusable_name = trans.get("reusable_name", trans.get("name", ""))
+                if reusable_name and reusable_name not in resolved_reusables:
+                    # Check if already registered
+                    key = f"reusable:{reusable_name}"
+                    if key in self.parsed_objects:
+                        resolved_reusables[reusable_name] = self.parsed_objects[key]
+                        logger.debug(f"Resolved reusable transformation {reusable_name} from parsed objects")
+                    else:
+                        # Store the transformation itself as the reusable definition
+                        resolved_reusables[reusable_name] = trans
+                        self.register_reusable_transformation(reusable_name, trans)
+        
+        return resolved_reusables
     
     def resolve_session_mapping(self, session_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Resolve mapping reference in session.
@@ -165,6 +216,54 @@ class ReferenceResolver:
         
         return resolved_worklets
     
+    def resolve_mapping_mapplets(self, mapping_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        """Resolve mapplet references in mapping.
+        
+        Args:
+            mapping_data: Mapping data with mapplet instance references
+            
+        Returns:
+            Dictionary of resolved mapplets keyed by mapplet name
+        """
+        resolved_mapplets = {}
+        transformations = mapping_data.get("transformations", [])
+        
+        for trans in transformations:
+            if trans.get("type") == "MAPPLET_INSTANCE":
+                mapplet_ref = trans.get("mapplet_ref")
+                if mapplet_ref and mapplet_ref not in resolved_mapplets:
+                    # Try to get from parsed objects
+                    key = f"mapplet:{mapplet_ref}"
+                    if key in self.parsed_objects:
+                        resolved_mapplets[mapplet_ref] = self.parsed_objects[key]
+                        logger.debug(f"Resolved mapplet {mapplet_ref} from parsed objects")
+                        continue
+                    
+                    # Try to get from version store
+                    try:
+                        mapplet_data = self.version_store.load(mapplet_ref)
+                        if mapplet_data:
+                            resolved_mapplets[mapplet_ref] = mapplet_data
+                            logger.debug(f"Resolved mapplet {mapplet_ref} from version store")
+                            continue
+                    except Exception as e:
+                        logger.warning(f"Could not load mapplet {mapplet_ref} from version store: {e}")
+                    
+                    # Try to load from file path if available
+                    if key in self.file_paths:
+                        try:
+                            parser = MappletParser(self.file_paths[key])
+                            mapplet_data = parser.parse()
+                            self.register_mapplet(mapplet_ref, mapplet_data, self.file_paths[key])
+                            resolved_mapplets[mapplet_ref] = mapplet_data
+                            continue
+                        except Exception as e:
+                            logger.warning(f"Could not load mapplet {mapplet_ref} from file: {e}")
+                    
+                    logger.warning(f"Mapplet {mapplet_ref} not found")
+        
+        return resolved_mapplets
+    
     def resolve_transformation_references(self, mapping_data: Dict[str, Any]) -> Dict[str, Any]:
         """Resolve transformation references within a mapping.
         
@@ -249,6 +348,27 @@ class ReferenceResolver:
                 worklets = self.resolve_workflow_worklets(workflow_data)
                 if worklet_name not in worklets:
                     errors.append(f"Worklet '{worklet_name}' referenced in workflow '{workflow_data.get('name')}' not found")
+        
+        return errors
+    
+    def validate_mapplet_references(self, mapping_data: Dict[str, Any]) -> List[str]:
+        """Validate all mapplet references in a mapping.
+        
+        Args:
+            mapping_data: Mapping data to validate
+            
+        Returns:
+            List of validation errors (empty if all valid)
+        """
+        errors = []
+        transformations = mapping_data.get("transformations", [])
+        
+        for trans in transformations:
+            if trans.get("type") == "MAPPLET_INSTANCE":
+                mapplet_ref = trans.get("mapplet_ref")
+                mapplets = self.resolve_mapping_mapplets(mapping_data)
+                if mapplet_ref not in mapplets:
+                    errors.append(f"Mapplet '{mapplet_ref}' referenced in mapping '{mapping_data.get('name')}' not found")
         
         return errors
     

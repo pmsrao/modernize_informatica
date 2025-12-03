@@ -1,7 +1,7 @@
 """SCD Detector — Production Grade
 Detects Type-1 / Type-2 / Type-3 SCD logic based on fields, expressions, update strategy.
 """
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 
 class SCDDetector:
@@ -13,16 +13,52 @@ class SCDDetector:
         Returns:
         {
             "type": "SCD1" | "SCD2" | "SCD3" | "NONE",
-            "keys": [...],
-            "effective_from": "...",
-            "effective_to": "..."
+            "strategy": "HISTORICAL" | "CURRENT_FLAG" | "OVERWRITE",
+            "keys": {
+                "business_keys": [...],
+                "surrogate_key": "...",
+                "primary_key": "..."
+            },
+            "effective_dates": {
+                "from_field": "...",
+                "to_field": "...",
+                "from_default": "...",
+                "to_default": "..."
+            },
+            "current_flag": {
+                "field": "...",
+                "true_value": "...",
+                "false_value": "..."
+            },
+            "versioning": {
+                "version_field": "...",
+                "version_strategy": "AUTO_INCREMENT|TIMESTAMP"
+            }
         }
         """
         scd_info = {
             "type": "NONE",
-            "keys": [],
-            "effective_from": None,
-            "effective_to": None
+            "strategy": None,
+            "keys": {
+                "business_keys": [],
+                "surrogate_key": None,
+                "primary_key": None
+            },
+            "effective_dates": {
+                "from_field": None,
+                "to_field": None,
+                "from_default": None,
+                "to_default": None
+            },
+            "current_flag": {
+                "field": None,
+                "true_value": None,
+                "false_value": None
+            },
+            "versioning": {
+                "version_field": None,
+                "version_strategy": None
+            }
         }
         
         # Check for Update Strategy transformation
@@ -40,19 +76,52 @@ class SCDDetector:
         # Detect SCD2 (most common)
         if self._has_scd2_indicators(target_fields, mapping):
             scd_info["type"] = "SCD2"
-            scd_info["effective_from"] = self._find_effective_from(target_fields)
-            scd_info["effective_to"] = self._find_effective_to(target_fields)
-            scd_info["keys"] = self._find_scd_keys(mapping, scd_info["type"])
+            effective_from = self._find_effective_from(target_fields)
+            effective_to = self._find_effective_to(target_fields)
+            
+            scd_info["effective_dates"]["from_field"] = effective_from
+            scd_info["effective_dates"]["to_field"] = effective_to
+            scd_info["effective_dates"]["from_default"] = "SYSDATE"  # Common default
+            scd_info["effective_dates"]["to_default"] = "NULL"  # Common default for active records
+            
+            # Determine strategy
+            if any("CURRENT_FLAG" in f or "IS_CURRENT" in f for f in target_fields):
+                scd_info["strategy"] = "CURRENT_FLAG"
+                current_flag_field = self._find_current_flag_field(target_fields)
+                if current_flag_field:
+                    scd_info["current_flag"]["field"] = current_flag_field
+                    scd_info["current_flag"]["true_value"] = "Y"  # Common values
+                    scd_info["current_flag"]["false_value"] = "N"
+            else:
+                scd_info["strategy"] = "HISTORICAL"
+            
+            # Find keys
+            keys = self._find_scd_keys(mapping, scd_info["type"])
+            scd_info["keys"]["business_keys"] = keys
+            scd_info["keys"]["primary_key"] = self._find_primary_key(target_fields, mapping)
+            scd_info["keys"]["surrogate_key"] = self._find_surrogate_key(target_fields)
+            
+            # Find versioning
+            version_field = self._find_version_field(target_fields)
+            if version_field:
+                scd_info["versioning"]["version_field"] = version_field
+                scd_info["versioning"]["version_strategy"] = "AUTO_INCREMENT"  # Default assumption
         
         # Detect SCD1 (simple overwrite)
         elif self._has_scd1_indicators(target_fields, mapping):
             scd_info["type"] = "SCD1"
-            scd_info["keys"] = self._find_scd_keys(mapping, scd_info["type"])
+            scd_info["strategy"] = "OVERWRITE"
+            keys = self._find_scd_keys(mapping, scd_info["type"])
+            scd_info["keys"]["business_keys"] = keys
+            scd_info["keys"]["primary_key"] = self._find_primary_key(target_fields, mapping)
         
         # Detect SCD3 (current and previous value)
         elif self._has_scd3_indicators(target_fields, mapping):
             scd_info["type"] = "SCD3"
-            scd_info["keys"] = self._find_scd_keys(mapping, scd_info["type"])
+            scd_info["strategy"] = "CURRENT_PREVIOUS"
+            keys = self._find_scd_keys(mapping, scd_info["type"])
+            scd_info["keys"]["business_keys"] = keys
+            scd_info["keys"]["primary_key"] = self._find_primary_key(target_fields, mapping)
         
         return scd_info
     
@@ -142,3 +211,40 @@ class SCDDetector:
                         keys.append(right_port)
         
         return list(set(keys))  # Remove duplicates
+    
+    def _find_current_flag_field(self, target_fields: List[str]) -> Optional[str]:
+        """Find current flag field name."""
+        for field in target_fields:
+            if "CURRENT_FLAG" in field or "IS_CURRENT" in field:
+                return field
+        return None
+    
+    def _find_primary_key(self, target_fields: List[str], mapping: Dict[str, Any]) -> Optional[str]:
+        """Find primary key field."""
+        # Look for PRIMARY_KEY or fields ending in _PK or _ID
+        for field in target_fields:
+            if "PRIMARY_KEY" in field or field.endswith("_PK") or field.endswith("_ID"):
+                return field
+        
+        # Check target fields
+        for target in mapping.get("targets", []):
+            for field in target.get("fields", []):
+                field_name = field.get("name", "").upper()
+                if "PRIMARY" in field_name and "KEY" in field_name:
+                    return field.get("name", "")
+        
+        return None
+    
+    def _find_surrogate_key(self, target_fields: List[str]) -> Optional[str]:
+        """Find surrogate key field."""
+        for field in target_fields:
+            if "SURROGATE" in field or field.endswith("_SK"):
+                return field
+        return None
+    
+    def _find_version_field(self, target_fields: List[str]) -> Optional[str]:
+        """Find version field."""
+        for field in target_fields:
+            if "VERSION" in field or "VER" in field:
+                return field
+        return None

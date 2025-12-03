@@ -85,7 +85,7 @@ class CodeQualityChecker:
         results["performance_hints"] = self.check_performance(code, code_type)
         
         # Best practices
-        results["best_practices"] = self.check_best_practices(code, code_type) = self.check_best_practices(code, code_type)
+        results["best_practices"] = self.check_best_practices(code, code_type)
         
         # Security checks
         results["security_issues"] = self.check_security(code)

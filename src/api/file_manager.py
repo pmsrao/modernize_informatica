@@ -127,6 +127,8 @@ class FileManager:
     def _detect_file_type(self, filename: str, content: bytes) -> str:
         """Detect file type from filename or content.
         
+        Supported types: mapping, workflow, session, worklet, mapplet
+        
         Args:
             filename: Original filename
             content: File content
@@ -137,7 +139,9 @@ class FileManager:
         filename_lower = filename.lower()
         
         # Check filename patterns
-        if "mapping" in filename_lower or "map" in filename_lower:
+        if "mapplet" in filename_lower or "mpl" in filename_lower:
+            return "mapplet"
+        elif "mapping" in filename_lower or "map" in filename_lower:
             return "mapping"
         elif "workflow" in filename_lower or "wf" in filename_lower:
             return "workflow"
@@ -149,7 +153,9 @@ class FileManager:
         # Try to detect from XML content
         try:
             content_str = content[:1000].decode('utf-8', errors='ignore')
-            if '<MAPPING' in content_str or '<Mapping' in content_str:
+            if '<MAPPLET' in content_str or '<Mapplet' in content_str:
+                return "mapplet"
+            elif '<MAPPING' in content_str or '<Mapping' in content_str:
                 return "mapping"
             elif '<WORKFLOW' in content_str or '<Workflow' in content_str:
                 return "workflow"

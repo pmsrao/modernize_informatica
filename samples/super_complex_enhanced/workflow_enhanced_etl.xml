@@ -1,0 +1,147 @@
+<?xml version="1.0"?>
+<WORKFLOW NAME="WF_ENHANCED_ETL_PIPELINE" VERSIONNUMBER="1">
+  <!-- Enhanced Workflow with new task types
+       Demonstrates: Command, Email, Timer, Decision, Event, Assignment, Control tasks -->
+  
+  <!-- ============================================ -->
+  <!-- PHASE 1: PRE-PROCESSING -->
+  <!-- ============================================ -->
+  
+  <!-- Command Task: Cleanup temporary files -->
+  <TASKINSTANCE NAME="CMD_CLEANUP_TEMP" TASKTYPE="Command">
+    <COMMAND>/bin/bash /scripts/cleanup_temp.sh</COMMAND>
+    <WORKINGDIRECTORY>/tmp/etl</WORKINGDIRECTORY>
+    <SUCCESSCODES>0</SUCCESSCODES>
+    <FAILURECODES>1,2</FAILURECODES>
+    <TIMEOUT>300</TIMEOUT>
+  </TASKINSTANCE>
+  
+  <!-- Timer Task: Wait for source system to be ready -->
+  <TASKINSTANCE NAME="TIMER_WAIT_SOURCE" TASKTYPE="Timer">
+    <WAITTYPE>File</WAITTYPE>
+    <FILEPATH>/data/source/ready.flag</FILEPATH>
+    <WAITVALUE>60</WAITVALUE>
+  </TASKINSTANCE>
+  
+  <!-- Assignment Task: Set workflow variables -->
+  <TASKINSTANCE NAME="ASSIGN_VARIABLES" TASKTYPE="Assignment">
+    <ASSIGNMENT VARIABLE="$$RUN_DATE" VALUE="TO_CHAR(SYSDATE, 'YYYY-MM-DD')"/>
+    <ASSIGNMENT VARIABLE="$$BATCH_ID" VALUE="$$BATCH_ID + 1"/>
+    <ASSIGNMENT VARIABLE="$$SOURCE_SYSTEM" VALUE="'ORACLE_PROD'"/>
+  </TASKINSTANCE>
+  
+  <!-- ============================================ -->
+  <!-- PHASE 2: DATA INGESTION -->
+  <!-- ============================================ -->
+  
+  <!-- Session: Ingest customers -->
+  <TASKINSTANCE NAME="S_M_STAGE_CUSTOMERS_ENHANCED" TASKTYPE="Session" MAPPINGNAME="M_STAGE_CUSTOMERS_ENHANCED"/>
+  
+  <!-- Session: Process orders -->
+  <TASKINSTANCE NAME="S_M_PROCESS_ORDERS_ENHANCED" TASKTYPE="Session" MAPPINGNAME="M_PROCESS_ORDERS_ENHANCED"/>
+  
+  <!-- Event Task: Raise event when ingestion completes -->
+  <TASKINSTANCE NAME="EVT_INGESTION_COMPLETE" TASKTYPE="Event-Raise">
+    <EVENTNAME>INGESTION_COMPLETE</EVENTNAME>
+  </TASKINSTANCE>
+  
+  <!-- ============================================ -->
+  <!-- PHASE 3: DATA VALIDATION -->
+  <!-- ============================================ -->
+  
+  <!-- Decision Task: Check data quality -->
+  <TASKINSTANCE NAME="DEC_DATA_QUALITY_CHECK" TASKTYPE="Decision">
+    <CONDITION>$$DATA_QUALITY_SCORE &gt; 95</CONDITION>
+    <BRANCH NAME="HIGH_QUALITY" CONDITION="$$DATA_QUALITY_SCORE &gt; 95" LINK="Success"/>
+    <BRANCH NAME="LOW_QUALITY" CONDITION="$$DATA_QUALITY_SCORE &lt;= 95" LINK="Failed"/>
+    <DEFAULTBRANCH>HIGH_QUALITY</DEFAULTBRANCH>
+  </TASKINSTANCE>
+  
+  <!-- Email Task: Notify on low quality -->
+  <TASKINSTANCE NAME="EMAIL_LOW_QUALITY" TASKTYPE="Email">
+    <SUBJECT>Data Quality Alert: Score below threshold</SUBJECT>
+    <BODY>Data quality score is $$DATA_QUALITY_SCORE. Please review.</BODY>
+    <RECIPIENT NAME="data-team@company.com"/>
+    <RECIPIENT NAME="etl-admin@company.com"/>
+    <MAILSERVER>smtp.company.com</MAILSERVER>
+  </TASKINSTANCE>
+  
+  <!-- ============================================ -->
+  <!-- PHASE 4: PROCESSING -->
+  <!-- ============================================ -->
+  
+  <!-- Event Task: Wait for validation event -->
+  <TASKINSTANCE NAME="EVT_WAIT_VALIDATION" TASKTYPE="Event-Wait">
+    <EVENTNAME>VALIDATION_COMPLETE</EVENTNAME>
+    <TIMEOUT>3600</TIMEOUT>
+  </TASKINSTANCE>
+  
+  <!-- Session: Load dimensions -->
+  <TASKINSTANCE NAME="S_M_LOAD_DIMENSIONS" TASKTYPE="Session">
+    <ATTRIBUTE NAME="MAPPINGNAME" VALUE="M_LOAD_DIMENSIONS"/>
+  </TASKINSTANCE>
+  
+  <!-- Session: Load facts -->
+  <TASKINSTANCE NAME="S_M_LOAD_FACTS" TASKTYPE="Session">
+    <ATTRIBUTE NAME="MAPPINGNAME" VALUE="M_LOAD_FACTS"/>
+  </TASKINSTANCE>
+  
+  <!-- ============================================ -->
+  <!-- PHASE 5: POST-PROCESSING -->
+  <!-- ============================================ -->
+  
+  <!-- Command Task: Archive processed files -->
+  <TASKINSTANCE NAME="CMD_ARCHIVE_FILES" TASKTYPE="Command">
+    <COMMAND>/bin/bash /scripts/archive_files.sh $$RUN_DATE</COMMAND>
+    <WORKINGDIRECTORY>/data/archive</WORKINGDIRECTORY>
+    <SUCCESSCODES>0</SUCCESSCODES>
+  </TASKINSTANCE>
+  
+  <!-- Email Task: Send completion notification -->
+  <TASKINSTANCE NAME="EMAIL_COMPLETION" TASKTYPE="Email">
+    <SUBJECT>ETL Pipeline Completed Successfully</SUBJECT>
+    <BODY>ETL pipeline completed at $$SYSDATE. Processed $$RECORD_COUNT records.</BODY>
+    <RECIPIENT NAME="data-team@company.com"/>
+    <MAILSERVER>smtp.company.com</MAILSERVER>
+  </TASKINSTANCE>
+  
+  <!-- Control Task: Stop workflow on critical error -->
+  <TASKINSTANCE NAME="CTRL_STOP_ON_ERROR" TASKTYPE="Control">
+    <ERRORMESSAGE>Critical error detected. Stopping workflow.</ERRORMESSAGE>
+  </TASKINSTANCE>
+  
+  <!-- ============================================ -->
+  <!-- CONNECTORS: Define execution flow -->
+  <!-- ============================================ -->
+  
+  <!-- Pre-processing sequence -->
+  <CONNECTOR FROMINSTANCE="CMD_CLEANUP_TEMP" FROMLINK="Success" TOINSTANCE="TIMER_WAIT_SOURCE" TOLINK="Start"/>
+  <CONNECTOR FROMINSTANCE="TIMER_WAIT_SOURCE" FROMLINK="Success" TOINSTANCE="ASSIGN_VARIABLES" TOLINK="Start"/>
+  
+  <!-- Ingestion phase -->
+  <CONNECTOR FROMINSTANCE="ASSIGN_VARIABLES" FROMLINK="Success" TOINSTANCE="S_M_STAGE_CUSTOMERS_ENHANCED" TOLINK="Start"/>
+  <CONNECTOR FROMINSTANCE="ASSIGN_VARIABLES" FROMLINK="Success" TOINSTANCE="S_M_PROCESS_ORDERS_ENHANCED" TOLINK="Start"/>
+  <CONNECTOR FROMINSTANCE="S_M_STAGE_CUSTOMERS_ENHANCED" FROMLINK="Success" TOINSTANCE="EVT_INGESTION_COMPLETE" TOLINK="Start"/>
+  <CONNECTOR FROMINSTANCE="S_M_PROCESS_ORDERS_ENHANCED" FROMLINK="Success" TOINSTANCE="EVT_INGESTION_COMPLETE" TOLINK="Start"/>
+  
+  <!-- Validation phase -->
+  <CONNECTOR FROMINSTANCE="EVT_INGESTION_COMPLETE" FROMLINK="Success" TOINSTANCE="DEC_DATA_QUALITY_CHECK" TOLINK="Start"/>
+  <CONNECTOR FROMINSTANCE="DEC_DATA_QUALITY_CHECK" FROMLINK="Failed" TOINSTANCE="EMAIL_LOW_QUALITY" TOLINK="Start"/>
+  <CONNECTOR FROMINSTANCE="DEC_DATA_QUALITY_CHECK" FROMLINK="Failed" TOINSTANCE="CTRL_STOP_ON_ERROR" TOLINK="Start"/>
+  
+  <!-- Processing phase -->
+  <CONNECTOR FROMINSTANCE="DEC_DATA_QUALITY_CHECK" FROMLINK="Success" TOINSTANCE="EVT_WAIT_VALIDATION" TOLINK="Start"/>
+  <CONNECTOR FROMINSTANCE="EVT_WAIT_VALIDATION" FROMLINK="Success" TOINSTANCE="S_M_LOAD_DIMENSIONS" TOLINK="Start"/>
+  <CONNECTOR FROMINSTANCE="S_M_LOAD_DIMENSIONS" FROMLINK="Success" TOINSTANCE="S_M_LOAD_FACTS" TOLINK="Start"/>
+  
+  <!-- Post-processing -->
+  <CONNECTOR FROMINSTANCE="S_M_LOAD_FACTS" FROMLINK="Success" TOINSTANCE="CMD_ARCHIVE_FILES" TOLINK="Start"/>
+  <CONNECTOR FROMINSTANCE="CMD_ARCHIVE_FILES" FROMLINK="Success" TOINSTANCE="EMAIL_COMPLETION" TOLINK="Start"/>
+  
+  <!-- Error handling -->
+  <CONNECTOR FROMINSTANCE="CMD_CLEANUP_TEMP" FROMLINK="Failed" TOINSTANCE="CTRL_STOP_ON_ERROR" TOLINK="Start"/>
+  <CONNECTOR FROMINSTANCE="S_M_STAGE_CUSTOMERS_ENHANCED" FROMLINK="Failed" TOINSTANCE="CTRL_STOP_ON_ERROR" TOLINK="Start"/>
+  <CONNECTOR FROMINSTANCE="S_M_PROCESS_ORDERS_ENHANCED" FROMLINK="Failed" TOINSTANCE="CTRL_STOP_ON_ERROR" TOLINK="Start"/>
+  
+</WORKFLOW>
+

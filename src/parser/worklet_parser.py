@@ -37,4 +37,8 @@ class WorkletParser:
                 })
         
         logger.debug(f"Extracted {len(tasks)} task(s) from worklet {worklet_name}")
-        return {"name": worklet_name, "tasks": tasks}
+        return {
+            "name": worklet_name,
+            "source_component_type": "worklet",
+            "tasks": tasks
+        }

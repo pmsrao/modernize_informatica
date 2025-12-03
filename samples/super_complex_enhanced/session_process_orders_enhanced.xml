@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<SESSION NAME="S_M_PROCESS_ORDERS_ENHANCED" MAPPINGNAME="M_PROCESS_ORDERS_ENHANCED">
+  <!-- Session Configuration for Enhanced Order Processing -->
+  
+  <ATTRIBUTE NAME="Source Database Connection" VALUE="STAGING_DB"/>
+  <ATTRIBUTE NAME="Target Database Connection" VALUE="PROCESSING_DB"/>
+  <ATTRIBUTE NAME="Tracing Level" VALUE="Normal"/>
+  <ATTRIBUTE NAME="Log File Directory" VALUE="/logs/etl"/>
+  <ATTRIBUTE NAME="Session Log File Name" VALUE="process_orders_enhanced.log"/>
+  
+  <!-- Sources -->
+  <SOURCE DATABASENAME="STAGING_DB" NAME="STAGE_ORDERS" TABLENAME="STAGE_ORDERS"/>
+  <SOURCE DATABASENAME="STAGING_DB" NAME="STAGE_ORDER_ITEMS" TABLENAME="STAGE_ORDER_ITEMS"/>
+  
+  <!-- Target -->
+  <TARGET DATABASENAME="PROCESSING_DB" NAME="PROCESSED_ORDERS" TABLENAME="PROCESSED_ORDERS"/>
+  
+</SESSION>
+

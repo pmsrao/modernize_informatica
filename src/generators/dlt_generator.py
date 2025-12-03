@@ -1,11 +1,24 @@
 """DLT Generator — Production Version
 Generates Delta Live Tables pipeline code from canonical model.
 """
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+from parser.reference_resolver import ReferenceResolver
+from versioning.version_store import VersionStore
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class DLTGenerator:
     """Generates Delta Live Tables pipeline code."""
+    
+    def __init__(self, reference_resolver: Optional[ReferenceResolver] = None):
+        """Initialize DLT generator.
+        
+        Args:
+            reference_resolver: Optional reference resolver for resolving mapplets
+        """
+        self.reference_resolver = reference_resolver or ReferenceResolver()
     
     def generate(self, model: Dict[str, Any]) -> str:
         """Generate DLT pipeline code from canonical model.
@@ -33,7 +46,16 @@ class DLTGenerator:
         transformations = model.get("transformations", [])
         for trans in transformations:
             trans_type = trans.get("type", "")
-            if trans_type in ["EXPRESSION", "AGGREGATOR", "JOINER", "LOOKUP"]:
+            if trans_type == "MAPPLET_INSTANCE":
+                lines.extend(self._generate_mapplet_instance_table(trans, model))
+                lines.append("")
+            elif trans_type == "CUSTOM_TRANSFORMATION":
+                lines.extend(self._generate_custom_transformation_table(trans))
+                lines.append("")
+            elif trans_type == "STORED_PROCEDURE":
+                lines.extend(self._generate_stored_procedure_table(trans))
+                lines.append("")
+            elif trans_type in ["EXPRESSION", "AGGREGATOR", "JOINER", "LOOKUP"]:
                 lines.extend(self._generate_transformation_table(trans, model))
                 lines.append("")
         

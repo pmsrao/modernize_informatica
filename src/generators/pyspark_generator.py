@@ -1,14 +1,24 @@
 """PySpark Generator — Production Version
 Generates PySpark DataFrame code from canonical model.
 """
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from utils.logger import get_logger
+from parser.reference_resolver import ReferenceResolver
+from versioning.version_store import VersionStore
 
 logger = get_logger(__name__)
 
 
 class PySparkGenerator:
     """Generates PySpark code from canonical mapping model."""
+    
+    def __init__(self, reference_resolver: Optional[ReferenceResolver] = None):
+        """Initialize PySpark generator.
+        
+        Args:
+            reference_resolver: Optional reference resolver for resolving mapplets
+        """
+        self.reference_resolver = reference_resolver or ReferenceResolver()
     
     def generate(self, model: Dict[str, Any]) -> str:
         """Generate PySpark code from canonical model.
@@ -30,7 +40,7 @@ class PySparkGenerator:
         # Spark session initialization
         lines.append("# Initialize Spark Session")
         lines.append("spark = SparkSession.builder.appName('{}').getOrCreate()".format(
-            model.get("mapping_name", "InformaticaMapping")))
+            model.get("transformation_name", model.get("mapping_name", "InformaticaTransformation"))))
         lines.append("")
         
         # Read sources
@@ -55,16 +65,43 @@ class PySparkGenerator:
             lines.append(f"df = df_{first_source.get('name', 'source')}")
             lines.append("")
         
+        # Track reusable transformations to generate as functions
+        reusable_transforms = {}
+        
         # Process transformations in order
         transformations = model.get("transformations", [])
         for trans in transformations:
             trans_type = trans.get("type", "")
             trans_name = trans.get("name", "")
             
-            if trans_type == "EXPRESSION":
-                lines.extend(self._generate_expression(trans))
+            # Check if this is a reusable transformation
+            if trans.get("is_reusable", False):
+                reusable_name = trans.get("reusable_name", trans_name)
+                reusable_transforms[reusable_name] = trans
+                # Generate as function on first encounter
+                lines.extend(self._generate_reusable_transformation_function(trans, reusable_name))
+                lines.append("")
+            
+            if trans_type == "MAPPLET_INSTANCE":
+                lines.extend(self._generate_mapplet_instance(trans, model))
+            elif trans_type == "CUSTOM_TRANSFORMATION":
+                lines.extend(self._generate_custom_transformation(trans))
+            elif trans_type == "STORED_PROCEDURE":
+                lines.extend(self._generate_stored_procedure(trans))
+            elif trans_type == "EXPRESSION":
+                # Check if reusable - if so, call function instead of generating inline
+                if trans.get("is_reusable", False):
+                    reusable_name = trans.get("reusable_name", trans_name)
+                    lines.extend(self._generate_reusable_transformation_call(trans, reusable_name))
+                else:
+                    lines.extend(self._generate_expression(trans))
             elif trans_type == "LOOKUP":
-                lines.extend(self._generate_lookup(trans))
+                # Check if reusable
+                if trans.get("is_reusable", False):
+                    reusable_name = trans.get("reusable_name", trans_name)
+                    lines.extend(self._generate_reusable_transformation_call(trans, reusable_name))
+                else:
+                    lines.extend(self._generate_lookup(trans))
             elif trans_type == "JOINER":
                 lines.extend(self._generate_joiner(trans))
             elif trans_type == "AGGREGATOR":
@@ -402,3 +439,248 @@ class PySparkGenerator:
         
         # Return as F.expr() string for safety
         return f"F.expr('{expr}')"
+    
+    def _generate_mapplet_instance(self, trans: Dict[str, Any], model: Dict[str, Any]) -> List[str]:
+        """Generate code for mapplet instance by inlining transformations.
+        
+        Args:
+            trans: Mapplet instance transformation
+            model: Full canonical model
+            
+        Returns:
+            List of code lines for inlined mapplet
+        """
+        lines = []
+        mapplet_ref = trans.get("mapplet_ref", "")
+        instance_name = trans.get("name", "")
+        input_port_mappings = trans.get("input_port_mappings", {})
+        output_port_mappings = trans.get("output_port_mappings", {})
+        
+        logger.info(f"Inlining mapplet {mapplet_ref} for instance {instance_name}")
+        
+        # Resolve mapplet reference
+        mapplet_data = self._resolve_mapplet(mapplet_ref)
+        if not mapplet_data:
+            lines.append(f"# ERROR: Mapplet '{mapplet_ref}' not found - manual intervention required")
+            lines.append(f"# Placeholder for mapplet instance: {instance_name}")
+            return lines
+        
+        lines.append(f"# Inline mapplet: {mapplet_ref} (instance: {instance_name})")
+        
+        # Map input ports: create a temporary DataFrame with mapplet input columns
+        if input_port_mappings:
+            lines.append(f"# Map input ports to mapplet")
+            mapplet_input_cols = []
+            for mapplet_input_port, mapping_info in input_port_mappings.items():
+                from_trans = mapping_info.get("from_transformation", "")
+                from_port = mapping_info.get("from_port", "")
+                if from_trans and from_port:
+                    # Use the column from the source transformation
+                    col_expr = f"F.col('{from_port}').alias('{mapplet_input_port}')"
+                    mapplet_input_cols.append(col_expr)
+            
+            if mapplet_input_cols:
+                lines.append(f"df_mapplet_input = df.select({', '.join(mapplet_input_cols)})")
+                lines.append("df = df_mapplet_input")
+        
+        # Inline mapplet transformations
+        mapplet_transformations = mapplet_data.get("transformations", [])
+        for mapplet_trans in mapplet_transformations:
+            mapplet_trans_type = mapplet_trans.get("type", "")
+            
+            if mapplet_trans_type == "EXPRESSION":
+                lines.extend(self._generate_expression(mapplet_trans))
+            elif mapplet_trans_type == "LOOKUP":
+                lines.extend(self._generate_lookup(mapplet_trans))
+            elif mapplet_trans_type == "JOINER":
+                lines.extend(self._generate_joiner(mapplet_trans))
+            elif mapplet_trans_type == "AGGREGATOR":
+                lines.extend(self._generate_aggregator(mapplet_trans))
+            elif mapplet_trans_type == "FILTER":
+                lines.extend(self._generate_filter(mapplet_trans))
+            elif mapplet_trans_type == "ROUTER":
+                lines.extend(self._generate_router(mapplet_trans))
+            elif mapplet_trans_type == "SORTER":
+                lines.extend(self._generate_sorter(mapplet_trans))
+            elif mapplet_trans_type == "RANK":
+                lines.extend(self._generate_rank(mapplet_trans))
+            elif mapplet_trans_type == "UNION":
+                lines.extend(self._generate_union(mapplet_trans))
+            elif mapplet_trans_type == "UPDATE_STRATEGY":
+                lines.extend(self._generate_update_strategy(mapplet_trans))
+        
+        # Map output ports: select only the output ports that are connected
+        if output_port_mappings:
+            lines.append(f"# Map mapplet output ports to target")
+            output_cols = []
+            for mapplet_output_port, mapping_info in output_port_mappings.items():
+                to_trans = mapping_info.get("to_transformation", "")
+                to_port = mapping_info.get("to_port", "")
+                if to_trans and to_port:
+                    # Rename mapplet output to target port name
+                    output_cols.append(f"F.col('{mapplet_output_port}').alias('{to_port}')")
+            
+            if output_cols:
+                # Keep all columns and add renamed output columns
+                lines.append(f"df = df.select(*[c for c in df.columns if c not in {[p for p in output_port_mappings.keys()]}], "
+                           f"{', '.join(output_cols)})")
+        
+        return lines
+    
+    def _generate_reusable_transformation_function(self, trans: Dict[str, Any], reusable_name: str) -> List[str]:
+        """Generate function definition for reusable transformation.
+        
+        Args:
+            trans: Reusable transformation data
+            reusable_name: Name of the reusable transformation
+            
+        Returns:
+            List of code lines for function definition
+        """
+        lines = []
+        trans_type = trans.get("type", "")
+        func_name = f"reusable_{reusable_name.lower().replace(' ', '_')}"
+        
+        lines.append(f"# Reusable Transformation Function: {reusable_name}")
+        lines.append(f"def {func_name}(df):")
+        lines.append(f'    """Reusable transformation: {reusable_name}"""')
+        
+        # Generate transformation logic based on type
+        if trans_type == "EXPRESSION":
+            lines.append("    # Expression transformation logic")
+            for port in trans.get("ports", []):
+                if port.get("port_type") == "OUTPUT":
+                    port_name = port.get("name", "")
+                    expression = port.get("expression", "")
+                    if expression:
+                        lines.append(f'    df = df.withColumn("{port_name}", {expression})')
+        elif trans_type == "LOOKUP":
+            lines.append("    # Lookup transformation logic")
+            lines.append(f'    # TODO: Implement lookup logic for {reusable_name}')
+        
+        lines.append("    return df")
+        lines.append("")
+        
+        return lines
+    
+    def _generate_reusable_transformation_call(self, trans: Dict[str, Any], reusable_name: str) -> List[str]:
+        """Generate function call for reusable transformation.
+        
+        Args:
+            trans: Transformation instance that uses reusable
+            reusable_name: Name of the reusable transformation
+            
+        Returns:
+            List of code lines for function call
+        """
+        func_name = f"reusable_{reusable_name.lower().replace(' ', '_')}"
+        return [
+            f"# Call reusable transformation: {reusable_name}",
+            f"df = {func_name}(df)",
+            ""
+        ]
+    
+    def _resolve_mapplet(self, mapplet_ref: str) -> Optional[Dict[str, Any]]:
+        """Resolve mapplet reference.
+        
+        Args:
+            mapplet_ref: Mapplet name to resolve
+            
+        Returns:
+            Mapplet data or None if not found
+        """
+        # Try to resolve from reference resolver
+        try:
+            # Register mapping to resolver context if needed
+            resolved_mapplets = self.reference_resolver.resolve_mapping_mapplets({
+                "transformations": [{"type": "MAPPLET_INSTANCE", "mapplet_ref": mapplet_ref}]
+            })
+            if mapplet_ref in resolved_mapplets:
+                return resolved_mapplets[mapplet_ref]
+        except Exception as e:
+            logger.warning(f"Could not resolve mapplet {mapplet_ref} from resolver: {e}")
+        
+        # Try to load from version store
+        try:
+            version_store = VersionStore()
+            mapplet_data = version_store.load(mapplet_ref)
+            if mapplet_data:
+                return mapplet_data
+        except Exception as e:
+            logger.warning(f"Could not load mapplet {mapplet_ref} from version store: {e}")
+        
+        return None
+    
+    def _generate_custom_transformation(self, trans: Dict[str, Any]) -> List[str]:
+        """Generate placeholder code for custom transformation.
+        
+        Args:
+            trans: Custom transformation data
+            
+        Returns:
+            List of code lines with placeholder
+        """
+        lines = []
+        trans_name = trans.get("name", "")
+        custom_type = trans.get("custom_type", "Unknown")
+        class_name = trans.get("class_name")
+        code_reference = trans.get("code_reference") or trans.get("jar_file")
+        
+        lines.append(f"# ============================================================================")
+        lines.append(f"# MANUAL INTERVENTION REQUIRED: Custom Transformation")
+        lines.append(f"# ============================================================================")
+        lines.append(f"# Transformation: {trans_name}")
+        lines.append(f"# Type: {custom_type}")
+        if class_name:
+            lines.append(f"# Class: {class_name}")
+        if code_reference:
+            lines.append(f"# Code Reference: {code_reference}")
+        lines.append(f"#")
+        lines.append(f"# This custom transformation requires manual migration.")
+        lines.append(f"# Please review the custom code and implement equivalent logic in PySpark.")
+        lines.append(f"#")
+        lines.append(f"# Placeholder:")
+        lines.append(f"# df = df  # TODO: Implement custom transformation logic for {trans_name}")
+        lines.append(f"# ============================================================================")
+        
+        return lines
+    
+    def _generate_stored_procedure(self, trans: Dict[str, Any]) -> List[str]:
+        """Generate placeholder code for stored procedure.
+        
+        Args:
+            trans: Stored procedure transformation data
+            
+        Returns:
+            List of code lines with placeholder
+        """
+        lines = []
+        trans_name = trans.get("name", "")
+        procedure_name = trans.get("procedure_name", "")
+        connection = trans.get("connection")
+        parameters = trans.get("parameters", [])
+        sql_query = trans.get("sql_query")
+        
+        lines.append(f"# ============================================================================")
+        lines.append(f"# MANUAL INTERVENTION REQUIRED: Stored Procedure")
+        lines.append(f"# ============================================================================")
+        lines.append(f"# Transformation: {trans_name}")
+        lines.append(f"# Procedure: {procedure_name}")
+        if connection:
+            lines.append(f"# Connection: {connection}")
+        if parameters:
+            lines.append(f"# Parameters: {parameters}")
+        if sql_query:
+            lines.append(f"# SQL Query: {sql_query}")
+        lines.append(f"#")
+        lines.append(f"# This stored procedure requires database-specific handling.")
+        lines.append(f"# Please review the procedure logic and implement equivalent functionality.")
+        lines.append(f"#")
+        lines.append(f"# Option 1: Use JDBC to call stored procedure")
+        lines.append(f"# df = spark.read.format('jdbc').option('url', 'jdbc:...').option('dbtable', 'CALL {procedure_name}(...)').load()")
+        lines.append(f"#")
+        lines.append(f"# Option 2: Implement equivalent logic in PySpark")
+        lines.append(f"# df = df  # TODO: Implement stored procedure logic for {procedure_name}")
+        lines.append(f"# ============================================================================")
+        
+        return lines

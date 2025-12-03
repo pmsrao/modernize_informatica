@@ -456,7 +456,7 @@ function MappingDetailView({ mapping, sessionName, workflowName }) {
     <div>
       <div style={{ marginBottom: '30px', borderBottom: '2px solid #ddd', paddingBottom: '20px' }}>
         <h2 style={{ margin: '0 0 10px 0', color: '#333' }}>
-          {mapping?.mapping_name || mapping?.name || 'Unknown Transformation'}
+          {mapping?.transformation_name || mapping?.mapping_name || mapping?.name || 'Unknown Transformation'}
         </h2>
         <div style={{ fontSize: '14px', color: '#666' }}>
           <div>Workflow: <strong>{workflowName}</strong> → Task: <strong>{sessionName}</strong></div>

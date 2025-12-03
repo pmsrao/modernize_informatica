@@ -55,7 +55,15 @@ class VersionStore:
             # Save to graph first
             if self.graph_store:
                 try:
-                    self.graph_store.save_mapping(model)
+                    # Determine component type and save accordingly
+                    source_component_type = model.get("source_component_type", "")
+                    if source_component_type == "mapplet":
+                        self.graph_store.save_reusable_transformation(model)
+                    elif source_component_type == "mapping" or "transformation_name" in model:
+                        self.graph_store.save_transformation(model)
+                    else:
+                        # Try to save as transformation by default
+                        self.graph_store.save_transformation(model)
                     logger.debug(f"Model saved to graph: {name}")
                 except Exception as e:
                     logger.error(f"Failed to save to graph: {name}", error=e)
@@ -68,7 +76,15 @@ class VersionStore:
             # Sync to graph if enabled
             if self.graph_store:
                 try:
-                    self.graph_store.save_mapping(model)
+                    # Determine component type and save accordingly
+                    source_component_type = model.get("source_component_type", "")
+                    if source_component_type == "mapplet":
+                        self.graph_store.save_reusable_transformation(model)
+                    elif source_component_type == "mapping" or "transformation_name" in model:
+                        self.graph_store.save_transformation(model)
+                    else:
+                        # Try to save as transformation by default
+                        self.graph_store.save_transformation(model)
                     logger.debug(f"Model synced to graph: {name}")
                 except Exception as e:
                     logger.warning(f"Failed to sync to graph: {str(e)}")
@@ -110,7 +126,7 @@ class VersionStore:
             # Load from graph first
             if self.graph_store:
                 try:
-                    model = self.graph_store.load_mapping(name)
+                    model = self.graph_store.load_transformation(name)
                     if model:
                         logger.debug(f"Model loaded from graph: {name}")
                         return model

@@ -37,15 +37,12 @@ export default function CodeRepositoryPage() {
         const transformed = transformRepositoryStructure(result.repository || {});
         console.log('Transformed repository:', transformed);
         setRepository(transformed);
-        // Auto-expand workflows directory and first workflow
-        const newExpanded = new Set(['workflows']);
-        if (transformed.workflows && Object.keys(transformed.workflows).length > 0) {
-          const firstWorkflow = Object.keys(transformed.workflows)[0];
-          newExpanded.add(`workflows/${firstWorkflow}`);
-          if (transformed.workflows[firstWorkflow]?.orchestration) {
-            newExpanded.add(`workflows/${firstWorkflow}/orchestration`);
-          }
-        }
+        // Auto-expand first level directories
+        const newExpanded = new Set();
+        const firstLevelKeys = Object.keys(transformed).slice(0, 3); // Expand first 3 top-level items
+        firstLevelKeys.forEach(key => {
+          newExpanded.add(key);
+        });
         console.log('Initial expanded set:', Array.from(newExpanded));
         setExpanded(newExpanded);
       } else {
@@ -60,127 +57,45 @@ export default function CodeRepositoryPage() {
   };
 
   const transformRepositoryStructure = (repo) => {
-    // Transform from workflow/session/mapping/code_files to workflows/{workflow}/orchestration/{files}
-    const transformed = {
-      'review_summary.json': { type: 'file', path: 'review_summary.json' },
-      'workflows': {}
-    };
-
-    // Handle empty or invalid repo
+    // The API now returns a simple filesystem tree structure
+    // Just return it as-is, no transformation needed
     if (!repo || typeof repo !== 'object') {
-      return transformed;
+      return {};
     }
-
-    // Helper function to extract workflow name from file path
-    const extractWorkflowFromPath = (filePath) => {
-      if (!filePath) return null;
-      // Look for pattern: .../workflows/{workflow_name}/...
-      const parts = filePath.split('/');
-      const workflowsIndex = parts.findIndex(p => p === 'workflows');
-      if (workflowsIndex >= 0 && workflowsIndex < parts.length - 1) {
-        return parts[workflowsIndex + 1];
-      }
-      return null;
-    };
-
-    Object.keys(repo).forEach(workflowName => {
-      const workflow = repo[workflowName];
-      if (!workflow || typeof workflow !== 'object') return;
-      
-      // For "standalone", try to extract workflow name from file paths
-      let actualWorkflowName = workflowName;
-      if (workflowName === 'standalone') {
-        // Try to find workflow name from any file path
-        let foundWorkflow = null;
-        Object.keys(workflow).forEach(sessionName => {
-          const session = workflow[sessionName];
-          if (!session || typeof session !== 'object') return;
-          Object.keys(session).forEach(mappingName => {
-            const mapping = session[mappingName];
-            if (Array.isArray(mapping)) {
-              mapping.forEach(codeFile => {
-                if (codeFile?.file_path) {
-                  const extracted = extractWorkflowFromPath(codeFile.file_path);
-                  if (extracted) {
-                    foundWorkflow = extracted;
-                  }
-                }
-              });
-            }
-          });
-        });
-        if (foundWorkflow) {
-          actualWorkflowName = foundWorkflow;
-        } else {
-          // If we can't extract, use "standalone" but don't skip it
-          actualWorkflowName = 'standalone';
-        }
-      }
-      
-      // Normalize workflow name (remove wf_ prefix, convert to lowercase)
-      const normalizedWorkflowName = actualWorkflowName.toLowerCase().replace(/^wf_/, '');
-      
-      if (!transformed.workflows[normalizedWorkflowName]) {
-        transformed.workflows[normalizedWorkflowName] = {
-          'orchestration': {}
-        };
-      }
-      
-      const workflowDir = transformed.workflows[normalizedWorkflowName];
-
-      // Collect all code files from sessions/mappings
-      Object.keys(workflow).forEach(sessionName => {
-        const session = workflow[sessionName];
-        if (!session || typeof session !== 'object') return;
-        
-        Object.keys(session).forEach(mappingName => {
-          const mapping = session[mappingName];
-          if (Array.isArray(mapping)) {
-            mapping.forEach(codeFile => {
-              if (!codeFile || typeof codeFile !== 'object') return;
-              
-              // Get file name from file_path
-              const filePath = codeFile.file_path;
-              if (!filePath) return;
-              
-              const fileName = filePath.split('/').pop();
-              if (!fileName) return;
-              
-              // Store the code file with its full path
-              if (!workflowDir.orchestration[fileName]) {
-                workflowDir.orchestration[fileName] = {
-                  ...codeFile,
-                  file_path: filePath
-                };
-              }
-            });
-          }
-        });
-      });
-    });
-
-    return transformed;
+    
+    return repo;
   };
 
   const loadCodeContent = async (filePath) => {
+    if (!filePath) {
+      setCodeContent('');
+      return;
+    }
+    
     setLoadingCode(true);
+    setError(null);
     try {
-      // Handle special case for review_summary.json - it might not exist as a code file
-      if (filePath === 'review_summary.json') {
-        // Try to find it in the generated code directory
-        // For now, just show a message
-        setCodeContent('// review_summary.json - This file is generated during code review process\n// It contains summary of code quality checks and recommendations');
-        return;
+      console.log('Loading code content from:', filePath);
+      // Convert absolute path to relative path if needed
+      let relPath = filePath;
+      if (filePath.includes('test_log/generated_ai')) {
+        relPath = filePath.split('test_log/generated_ai/')[1] || filePath;
+      } else if (filePath.includes('test_log/generated')) {
+        relPath = filePath.split('test_log/generated/')[1] || filePath;
       }
       
-      const result = await apiClient.getCodeFile(filePath);
+      const result = await apiClient.getCodeFile(relPath);
+      console.log('Code content result:', result);
       if (result.success) {
         setCodeContent(result.code || '');
       } else {
-        setCodeContent(`// Error loading code: ${result.message}\n// File path: ${filePath}`);
+        setCodeContent(`// Error loading code: ${result.message || 'Unknown error'}\n// File path: ${relPath}`);
+        setError(result.message || 'Failed to load code content');
       }
     } catch (err) {
-      setCodeContent(`// Error loading code: ${err.message}\n// File path: ${filePath}`);
+      const errorMsg = `// Error loading code: ${err.message}\n// File path: ${filePath}`;
+      setCodeContent(errorMsg);
+      setError(err.message || 'Failed to load code content');
       console.error('Error loading code content:', err);
     } finally {
       setLoadingCode(false);
@@ -217,9 +132,10 @@ export default function CodeRepositoryPage() {
       const currentPath = path ? `${path}/${key}` : key;
       const value = tree[key];
       
-      if (key === 'review_summary.json') {
-        // Root level file - check if it has a file_path property
-        const filePath = value?.file_path || value?.path || 'review_summary.json';
+      if (typeof value === 'object' && !Array.isArray(value) && value !== null && value.type === 'file' && value.path) {
+        // It's a file
+        const filePath = value.file_path || value.path;
+        const isSelected = selectedFile === filePath;
         items.push(
           <div key={currentPath} style={{ marginLeft: `${indent}px`, marginTop: '4px' }}>
             <div
@@ -227,7 +143,8 @@ export default function CodeRepositoryPage() {
               style={{
                 padding: '6px 8px',
                 cursor: 'pointer',
-                background: selectedFile === filePath ? '#E3F2FD' : 'transparent',
+                background: isSelected ? '#E3F2FD' : 'transparent',
+                border: isSelected ? '2px solid #4A90E2' : '1px solid transparent',
                 borderRadius: '4px',
                 display: 'flex',
                 alignItems: 'center',
@@ -237,11 +154,23 @@ export default function CodeRepositoryPage() {
               }}
             >
               <span>📄</span>
-              <span>{key}</span>
+              <span style={{ flex: 1 }}>{key}</span>
+              {value.quality_score !== null && value.quality_score !== undefined && (
+                <span style={{ 
+                  padding: '2px 6px',
+                  borderRadius: '3px',
+                  background: value.quality_score >= 80 ? '#4CAF50' : 
+                             value.quality_score >= 60 ? '#FF9800' : '#F44336',
+                  color: 'white',
+                  fontSize: '10px'
+                }}>
+                  {value.quality_score}
+                </span>
+              )}
             </div>
           </div>
         );
-      } else if (typeof value === 'object' && !Array.isArray(value) && value !== null && !value.file_path) {
+      } else if (typeof value === 'object' && !Array.isArray(value) && value !== null && (!value.type || value.type !== 'file')) {
         // It's a directory (not a file object with file_path)
         const isExpanded = expanded.has(currentPath);
         const isRoot = level === 0;
@@ -310,49 +239,6 @@ export default function CodeRepositoryPage() {
             )}
           </div>
         );
-      } else if (value && typeof value === 'object' && value.file_path) {
-        // It's a code file
-        const filePath = value.file_path;
-        const fileName = getFileName(filePath);
-        const isSelected = selectedFile === filePath;
-        
-        items.push(
-          <div key={currentPath} style={{ marginLeft: `${indent}px`, marginTop: '4px' }}>
-            <div
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedFile(filePath);
-              }}
-              style={{
-                padding: '6px 8px',
-                cursor: 'pointer',
-                background: isSelected ? '#E3F2FD' : 'transparent',
-                border: isSelected ? '2px solid #4A90E2' : '1px solid transparent',
-                borderRadius: '4px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontSize: '13px',
-                fontFamily: 'monospace'
-              }}
-            >
-              <span>📄</span>
-              <span style={{ flex: 1 }}>{fileName}</span>
-              {value.quality_score !== null && value.quality_score !== undefined && (
-                <span style={{ 
-                  padding: '2px 6px',
-                  borderRadius: '3px',
-                  background: value.quality_score >= 80 ? '#4CAF50' : 
-                             value.quality_score >= 60 ? '#FF9800' : '#F44336',
-                  color: 'white',
-                  fontSize: '10px'
-                }}>
-                  {value.quality_score}
-                </span>
-              )}
-            </div>
-          </div>
-        );
       }
     });
     
@@ -384,8 +270,7 @@ export default function CodeRepositoryPage() {
     );
   }
 
-  const workflows = Object.keys(repository.workflows || {});
-  const hasData = workflows.length > 0 || repository['review_summary.json'];
+  const hasData = repository && Object.keys(repository).length > 0;
 
   return (
     <div style={{ 

@@ -10,7 +10,7 @@ class FileUploadResponse(BaseModel):
     file_id: str = Field(..., description="Unique file identifier")
     filename: str = Field(..., description="Original filename")
     file_size: int = Field(..., description="File size in bytes")
-    file_type: str = Field(..., description="File type (mapping, workflow, session, worklet)")
+    file_type: str = Field(..., description="File type (mapping, workflow, session, worklet, mapplet)")
     uploaded_at: datetime = Field(..., description="Upload timestamp")
     message: str = Field(default="File uploaded successfully")
 
@@ -37,6 +37,12 @@ class ParseSessionRequest(BaseModel):
 
 class ParseWorkletRequest(BaseModel):
     """Request model for parsing worklet XML."""
+    file_id: Optional[str] = Field(None, description="File ID from upload")
+    file_path: Optional[str] = Field(None, description="Direct file path (alternative to file_id)")
+
+
+class ParseMappletRequest(BaseModel):
+    """Request model for parsing mapplet XML."""
     file_id: Optional[str] = Field(None, description="File ID from upload")
     file_path: Optional[str] = Field(None, description="Direct file path (alternative to file_id)")
 

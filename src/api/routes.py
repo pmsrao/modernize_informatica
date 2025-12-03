@@ -7,7 +7,7 @@ from datetime import datetime
 
 from .models import (
     FileUploadResponse,
-    ParseMappingRequest, ParseWorkflowRequest, ParseSessionRequest, ParseWorkletRequest,
+    ParseMappingRequest, ParseWorkflowRequest, ParseSessionRequest, ParseWorkletRequest, ParseMappletRequest,
     ParseResponse,
     GeneratePySparkRequest, GenerateDLTRequest, GenerateSQLRequest, GenerateSpecRequest,
     GenerateOrchestrationRequest,
@@ -18,7 +18,7 @@ from .models import (
     ErrorResponse
 )
 from .file_manager import file_manager
-from parser import MappingParser, WorkflowParser, SessionParser, WorkletParser
+from parser import MappingParser, WorkflowParser, SessionParser, WorkletParser, MappletParser
 from normalizer import MappingNormalizer
 from generators import (
     PySparkGenerator, DLTGenerator, SQLGenerator, SpecGenerator,
@@ -252,7 +252,7 @@ async def list_all_files(file_type: Optional[str] = None):
     """List all uploaded files.
     
     Args:
-        file_type: Optional filter by file type (mapping, workflow, session, worklet)
+        file_type: Optional filter by file type (mapping, workflow, session, worklet, mapplet)
         
     Returns:
         List of file metadata
@@ -383,7 +383,7 @@ async def parse_mapping(request: ParseMappingRequest):
         # Explicitly save to graph if graph store is enabled (redundant but ensures it's saved)
         if graph_store:
             try:
-                graph_store.save_mapping(enhanced_model)
+                graph_store.save_transformation(enhanced_model)
                 logger.debug(f"Model explicitly saved to graph: {mapping_name}")
             except Exception as e:
                 logger.warning(f"Failed to save to graph explicitly: {str(e)}")
@@ -580,6 +580,64 @@ async def parse_worklet(request: ParseWorkletRequest):
         )
     except Exception as e:
         logger.error("Unexpected error during worklet parsing", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Parsing failed: {str(e)}"
+        )
+
+
+@router.post("/parse/mapplet", response_model=ParseResponse)
+async def parse_mapplet(request: ParseMappletRequest):
+    """Parse Informatica mapplet XML.
+    
+    Args:
+        request: Parse request with file_id or file_path
+        
+    Returns:
+        Parsed mapplet data
+    """
+    try:
+        logger.info(f"Parsing mapplet: file_id={request.file_id}, file_path={request.file_path}")
+        
+        # Get file path
+        file_path = request.file_path
+        if request.file_id:
+            file_path = file_manager.get_file_path(request.file_id)
+            if not file_path:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"File not found: {request.file_id}"
+                )
+        
+        if not file_path:
+            raise ValidationError("Either file_id or file_path must be provided", field="file_id")
+        
+        # Parse mapplet
+        parser = MappletParser(file_path)
+        mapplet_data = parser.parse()
+        
+        # Store in version store
+        mapplet_id = mapplet_data.get("name", "unknown")
+        version_store.save(mapplet_id, mapplet_data)
+        
+        logger.info(f"Mapplet parsed successfully: {mapplet_id}")
+        
+        return ParseResponse(
+            success=True,
+            data=mapplet_data,
+            message="Mapplet parsed successfully"
+        )
+        
+    except ParsingError as e:
+        logger.error("Mapplet parsing failed", error=e)
+        return ParseResponse(
+            success=False,
+            data={},
+            message=f"Parsing failed: {str(e)}",
+            errors=[str(e)]
+        )
+    except Exception as e:
+        logger.error("Unexpected error during mapplet parsing", error=e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Parsing failed: {str(e)}"
@@ -856,7 +914,7 @@ async def generate_orchestration(request: GenerateOrchestrationRequest):
         # If graph store is available, enhance workflow structure
         if graph_store and graph_queries:
             workflow_name = workflow_data.get("name", "unknown")
-            enhanced_structure = graph_queries.get_workflow_structure(workflow_name)
+            enhanced_structure = graph_queries.get_pipeline_structure(workflow_name)
             if enhanced_structure:
                 workflow_data = enhanced_structure
         
@@ -1358,7 +1416,7 @@ async def get_mappings_using_table(table_name: str, database: Optional[str] = No
         )
     
     try:
-        mappings = graph_queries.find_mappings_using_table(table_name, database)
+        mappings = graph_queries.find_transformations_using_table(table_name, database)
         
         return {
             "success": True,
@@ -1392,7 +1450,7 @@ async def get_dependencies(mapping_name: str):
         )
     
     try:
-        dependencies = graph_queries.find_dependent_mappings(mapping_name)
+        dependencies = graph_queries.find_dependent_transformations(mapping_name)
         
         return {
             "success": True,
@@ -1487,7 +1545,7 @@ async def get_graph_statistics():
         )
     
     try:
-        stats = graph_queries.get_mapping_statistics()
+        stats = graph_queries.get_transformation_statistics()
         
         return {
             "success": True,
@@ -1551,7 +1609,7 @@ async def find_pattern(pattern_type: str, pattern_value: str):
         )
     
     try:
-        mappings = graph_queries.find_pattern_across_mappings(pattern_type, pattern_value)
+        mappings = graph_queries.find_pattern_across_transformations(pattern_type, pattern_value)
         
         return {
             "success": True,
@@ -1669,23 +1727,24 @@ async def list_workflows():
         )
     
     try:
-        workflows = graph_queries.list_workflows()
+        pipelines = graph_queries.list_pipelines()
         
         # Enhance with full structure
-        enhanced_workflows = []
-        for workflow in workflows:
-            workflow_name = workflow.get("name")
-            if workflow_name:
-                structure = graph_queries.get_workflow_structure(workflow_name)
+        enhanced_pipelines = []
+        for pipeline in pipelines:
+            pipeline_name = pipeline.get("name")
+            if pipeline_name:
+                structure = graph_queries.get_pipeline_structure(pipeline_name)
                 if structure:
-                    enhanced_workflows.append(structure)
+                    enhanced_pipelines.append(structure)
                 else:
-                    enhanced_workflows.append(workflow)
+                    enhanced_pipelines.append(pipeline)
         
         return {
             "success": True,
-            "workflows": enhanced_workflows,
-            "count": len(enhanced_workflows)
+            "pipelines": enhanced_pipelines,
+            "workflows": enhanced_pipelines,  # Backward compatibility alias
+            "count": len(enhanced_pipelines)
         }
     except Exception as e:
         logger.error(f"List workflows failed: {str(e)}", error=e)
@@ -1729,7 +1788,7 @@ async def get_workflow_structure_endpoint(workflow_name: str):
         )
     
     try:
-        structure = graph_queries.get_workflow_structure(workflow_name)
+        structure = graph_queries.get_pipeline_structure(workflow_name)
         
         if not structure:
             raise HTTPException(
@@ -1766,61 +1825,90 @@ async def list_all_components():
     
     try:
         # Get all components
-        workflows = graph_queries.list_workflows()
-        mappings = graph_store.list_all_mappings()
+        pipelines = graph_queries.list_pipelines()
+        transformations = graph_store.list_all_mappings()  # Returns transformation names
         
-        # Get sessions and worklets
+        # Get tasks, sub pipelines, and reusable transformations
         with graph_store.driver.session() as session:
-            sessions_result = session.run("""
-                MATCH (s:Session)
-                RETURN s.name as name, s.type as type, properties(s) as properties
-                ORDER BY s.name
+            tasks_result = session.run("""
+                MATCH (t:Task)
+                RETURN t.name as name, t.type as type, t.source_component_type as source_component_type, properties(t) as properties
+                ORDER BY t.name
             """)
-            sessions = [dict(record) for record in sessions_result]
+            tasks = [dict(record) for record in tasks_result]
             
-            worklets_result = session.run("""
-                MATCH (wl:Worklet)
-                RETURN wl.name as name, wl.type as type, properties(wl) as properties
-                ORDER BY wl.name
+            sub_pipelines_result = session.run("""
+                MATCH (sp:SubPipeline)
+                RETURN sp.name as name, sp.type as type, sp.source_component_type as source_component_type, properties(sp) as properties
+                ORDER BY sp.name
             """)
-            worklets = [dict(record) for record in worklets_result]
+            sub_pipelines = [dict(record) for record in sub_pipelines_result]
+            
+            reusable_transformations_result = session.run("""
+                MATCH (rt:ReusableTransformation)
+                RETURN rt.name as name, rt.type as type, rt.source_component_type as source_component_type, properties(rt) as properties
+                ORDER BY rt.name
+            """)
+            reusable_transformations = [dict(record) for record in reusable_transformations_result]
         
         # Enhance with file metadata
-        for wf in workflows:
-            file_meta = graph_queries.get_component_file_metadata(wf["name"], "Workflow")
+        for pipeline in pipelines:
+            file_meta = graph_queries.get_component_file_metadata(pipeline["name"], "Pipeline")
             if file_meta:
-                wf["file_metadata"] = file_meta
+                pipeline["file_metadata"] = file_meta
         
-        for sess in sessions:
-            file_meta = graph_queries.get_component_file_metadata(sess["name"], "Session")
+        for task in tasks:
+            file_meta = graph_queries.get_component_file_metadata(task["name"], "Task")
             if file_meta:
-                sess["file_metadata"] = file_meta
+                task["file_metadata"] = file_meta
         
-        for wl in worklets:
-            file_meta = graph_queries.get_component_file_metadata(wl["name"], "Worklet")
+        for sub_pipeline in sub_pipelines:
+            file_meta = graph_queries.get_component_file_metadata(sub_pipeline["name"], "SubPipeline")
             if file_meta:
-                wl["file_metadata"] = file_meta
+                sub_pipeline["file_metadata"] = file_meta
         
-        # Get mappings with file metadata
-        mappings_with_meta = []
-        for mapping_name in mappings:
-            mapping_info = {"name": mapping_name}
-            file_meta = graph_queries.get_component_file_metadata(mapping_name, "Mapping")
+        for reusable_transformation in reusable_transformations:
+            file_meta = graph_queries.get_component_file_metadata(reusable_transformation["name"], "ReusableTransformation")
             if file_meta:
-                mapping_info["file_metadata"] = file_meta
-            mappings_with_meta.append(mapping_info)
+                reusable_transformation["file_metadata"] = file_meta
         
+        # Get transformations with file metadata
+        transformations_with_meta = []
+        for transformation_name in transformations:
+            transformation_info = {"name": transformation_name}
+            file_meta = graph_queries.get_component_file_metadata(transformation_name, "Transformation")
+            if file_meta:
+                transformation_info["file_metadata"] = file_meta
+            transformations_with_meta.append(transformation_info)
+        
+        # Return both new generic names and old Informatica-specific names for backward compatibility
         return {
             "success": True,
-            "workflows": workflows,
-            "sessions": sessions,
-            "worklets": worklets,
-            "mappings": mappings_with_meta,
+            # New generic names
+            "pipelines": pipelines,
+            "tasks": tasks,
+            "sub_pipelines": sub_pipelines,
+            "reusable_transformations": reusable_transformations,
+            "transformations": transformations_with_meta,
+            # Old Informatica-specific names (for backward compatibility with frontend)
+            "workflows": pipelines,  # Alias for pipelines
+            "sessions": tasks,  # Alias for tasks
+            "worklets": sub_pipelines,  # Alias for sub_pipelines
+            "mapplets": reusable_transformations,  # Alias for reusable_transformations
+            "mappings": transformations_with_meta,  # Alias for transformations
             "counts": {
-                "workflows": len(workflows),
-                "sessions": len(sessions),
-                "worklets": len(worklets),
-                "mappings": len(mappings)
+                # New generic counts
+                "pipelines": len(pipelines),
+                "tasks": len(tasks),
+                "sub_pipelines": len(sub_pipelines),
+                "reusable_transformations": len(reusable_transformations),
+                "transformations": len(transformations),
+                # Old Informatica-specific counts (for backward compatibility)
+                "workflows": len(pipelines),
+                "sessions": len(tasks),
+                "worklets": len(sub_pipelines),
+                "mapplets": len(reusable_transformations),
+                "mappings": len(transformations)
             }
         }
     except Exception as e:
@@ -1898,6 +1986,41 @@ async def get_file_metadata(component_type: str, component_name: str):
         )
 
 
+@router.get("/graph/source/repository")
+async def get_source_repository():
+    """Get repository tree structure of source files (staging directory).
+    
+    Returns:
+        Tree structure of source files from staging directory
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        tree = graph_queries.get_source_repository_structure()
+        # Return empty structure if no source files exist yet
+        if not tree or (isinstance(tree, dict) and len(tree) == 0):
+            return {
+                "success": True,
+                "repository": {}
+            }
+        return {
+            "success": True,
+            "repository": tree
+        }
+    except Exception as e:
+        logger.error(f"Get source repository failed: {str(e)}", error=e)
+        # Return empty structure instead of error
+        return {
+            "success": True,
+            "repository": {},
+            "message": "No source files found in repository"
+        }
+
+
 @router.get("/graph/code/repository")
 async def get_code_repository():
     """Get repository tree structure of generated code.
@@ -1956,9 +2079,15 @@ async def get_mapping_code(mapping_name: str):
         )
     
     try:
-        code_files = graph_queries.get_mapping_code_files(mapping_name)
-        # Filter out any None or invalid entries
+        code_files = graph_queries.get_transformation_code_files(mapping_name)
+        # Filter out any None or invalid entries and ensure file_path is present
         code_files = [f for f in code_files if f and f.get("file_path")]
+        
+        # Log for debugging
+        logger.debug(f"Found {len(code_files)} code file(s) for mapping: {mapping_name}")
+        for f in code_files:
+            logger.debug(f"  - {f.get('file_path')} (type: {f.get('code_type')})")
+        
         return {
             "success": True,
             "mapping_name": mapping_name,
@@ -1977,6 +2106,88 @@ async def get_mapping_code(mapping_name: str):
         }
 
 
+@router.get("/graph/source/file/{file_path:path}")
+async def get_source_file(file_path: str):
+    """Read actual source file content from filesystem.
+    
+    Args:
+        file_path: Path to the source file (URL encoded, relative to staging directory)
+        
+    Returns:
+        File content and metadata
+    """
+    import urllib.parse
+    import os
+    from pathlib import Path
+    
+    try:
+        # Decode the file path
+        decoded_path = urllib.parse.unquote(file_path)
+        
+        # Security check: ensure path is within project directory
+        project_root = Path(__file__).parent.parent.parent
+        
+        # Handle both absolute and relative paths
+        if os.path.isabs(decoded_path):
+            # Absolute path provided - verify it's within project
+            full_path = Path(decoded_path).resolve()
+            if not str(full_path).startswith(str(project_root.resolve())):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: File path outside project directory"
+                )
+        else:
+            # Relative path - resolve from staging directory
+            full_path = (project_root / "test_log" / "staging" / decoded_path).resolve()
+            
+            if not str(full_path).startswith(str(project_root.resolve())):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: File path outside project directory"
+                )
+        
+        if not full_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Source file not found: {decoded_path}"
+            )
+        
+        # Try to read as text, fallback to binary if needed
+        try:
+            with open(full_path, 'r', encoding='utf-8') as f:
+                file_content = f.read()
+        except UnicodeDecodeError:
+            # If UTF-8 fails, read as binary and encode
+            with open(full_path, 'rb') as f:
+                file_content = f.read()
+                # Return as base64 or indicate binary
+                import base64
+                file_content = base64.b64encode(file_content).decode('ascii')
+                return {
+                    "success": True,
+                    "file_path": decoded_path,
+                    "content": file_content,
+                    "is_binary": True,
+                    "file_size": full_path.stat().st_size
+                }
+        
+        return {
+            "success": True,
+            "file_path": decoded_path,
+            "content": file_content,
+            "is_binary": False,
+            "file_size": full_path.stat().st_size
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Read source file failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Read source file failed: {str(e)}"
+        )
+
+
 @router.get("/graph/code/file/{file_path:path}")
 async def get_code_file(file_path: str):
     """Read actual code content from filesystem.
@@ -1988,6 +2199,7 @@ async def get_code_file(file_path: str):
         Code content and metadata
     """
     import urllib.parse
+    import os
     from pathlib import Path
     
     try:
@@ -1996,13 +2208,34 @@ async def get_code_file(file_path: str):
         
         # Security check: ensure path is within project directory
         project_root = Path(__file__).parent.parent.parent
-        full_path = (project_root / decoded_path).resolve()
         
-        if not str(full_path).startswith(str(project_root.resolve())):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied: File path outside project directory"
-            )
+        # Handle both absolute and relative paths
+        if os.path.isabs(decoded_path):
+            # Absolute path provided - verify it's within project
+            full_path = Path(decoded_path).resolve()
+            if not str(full_path).startswith(str(project_root.resolve())):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: File path outside project directory"
+                )
+        else:
+            # Relative path - try test_log/generated_ai first, then test_log/generated, then project root
+            # Check if path starts with test_log/generated_ai or test_log/generated
+            if decoded_path.startswith("test_log/generated_ai/"):
+                full_path = (project_root / decoded_path).resolve()
+            elif decoded_path.startswith("test_log/generated/"):
+                full_path = (project_root / decoded_path).resolve()
+            else:
+                # Try generated_ai first, then fallback to generated
+                full_path = (project_root / "test_log" / "generated_ai" / decoded_path).resolve()
+                if not full_path.exists():
+                    full_path = (project_root / "test_log" / "generated" / decoded_path).resolve()
+            
+            if not str(full_path).startswith(str(project_root.resolve())):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: File path outside project directory"
+                )
         
         if not full_path.exists():
             raise HTTPException(
@@ -2047,7 +2280,7 @@ async def get_mapping_structure(mapping_name: str):
     
     try:
         # Load canonical model from graph
-        canonical_model = graph_store.load_mapping(mapping_name)
+        canonical_model = graph_store.load_transformation(mapping_name)
         if not canonical_model:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -2061,11 +2294,11 @@ async def get_mapping_structure(mapping_name: str):
                 MATCH (a)-[r:CONNECTS_TO]->(b)
                 WHERE (a:Source OR a:Transformation OR a:Target) 
                   AND (b:Transformation OR b:Target)
-                  AND ((a:Source AND a.mapping = $name) OR 
-                       (a:Transformation AND a.mapping = $name) OR
-                       (a:Target AND a.mapping = $name))
-                  AND ((b:Transformation AND b.mapping = $name) OR
-                       (b:Target AND b.mapping = $name))
+                  AND ((a:Source AND a.transformation = $name) OR 
+                       (a:Transformation AND a.transformation = $name) OR
+                       (a:Target AND a.transformation = $name))
+                  AND ((b:Transformation AND b.transformation = $name) OR
+                       (b:Target AND b.transformation = $name))
                 RETURN a.name as from, b.name as to, r.from_port as from_port, r.to_port as to_port
             """, name=mapping_name)
             

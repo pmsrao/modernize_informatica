@@ -40,6 +40,7 @@ class MappingParser:
         try:
             mapping = {
                 "name": self.root.get("NAME", ""),
+                "source_component_type": "mapping",
                 "sources": [],
                 "targets": [],
                 "transformations": [],
@@ -118,6 +119,9 @@ class MappingParser:
         """Parse all transformation types."""
         transformations = []
         
+        # Mapplet instances (must be parsed first to detect them)
+        transformations.extend(self._parse_mapplet_instance())
+        
         # Source Qualifier
         transformations.extend(self._parse_source_qualifier())
         
@@ -154,6 +158,12 @@ class MappingParser:
         # Update Strategy
         transformations.extend(self._parse_update_strategy())
         
+        # Custom/Java transformations
+        transformations.extend(self._parse_custom_transformation())
+        
+        # Stored procedures
+        transformations.extend(self._parse_stored_procedure())
+        
         return transformations
     
     def _parse_source_qualifier(self) -> List[Dict[str, Any]]:
@@ -176,6 +186,10 @@ class MappingParser:
         for exp in self.root.findall(".//TRANSFORMATION[@TYPE='Expression']"):
             ports = self._parse_ports(exp)
             
+            # Check if transformation is reusable
+            is_reusable = exp.get("REUSABLE", "NO") == "YES"
+            reusable_name = exp.get("REUSABLENAME", "") if is_reusable else None
+            
             # Also parse TRANSFORMFIELD elements (used in Expression transformations)
             for tf in exp.findall(".//TRANSFORMFIELD"):
                 field_name = tf.get("NAME", "")
@@ -194,11 +208,19 @@ class MappingParser:
                     else:
                         ports.append(port_info)
             
-            expressions.append({
+            expr_dict = {
                 "type": "EXPRESSION",
                 "name": exp.get("NAME", ""),
                 "ports": ports
-            })
+            }
+            
+            # Add reusable transformation metadata
+            if is_reusable:
+                expr_dict["is_reusable"] = True
+                expr_dict["reusable_name"] = reusable_name or exp.get("NAME", "")
+                logger.debug(f"Found reusable transformation: {expr_dict['reusable_name']}")
+            
+            expressions.append(expr_dict)
         return expressions
     
     def _parse_lookup(self) -> List[Dict[str, Any]]:
@@ -208,6 +230,10 @@ class MappingParser:
             ports = self._parse_ports(lkp)
             lookup_type = "connected" if lkp.get("CONNECTED", "NO") == "YES" else "unconnected"
             cache_type = get_text(lkp, "CACHETYPE") or "none"
+            
+            # Check if transformation is reusable
+            is_reusable = lkp.get("REUSABLE", "NO") == "YES"
+            reusable_name = lkp.get("REUSABLENAME", "") if is_reusable else None
             
             # Parse lookup condition
             condition = None
@@ -226,7 +252,7 @@ class MappingParser:
                 if lookup_table_elem is not None:
                     table_name = lookup_table_elem.get("NAME", "")
             
-            lookups.append({
+            lookup_dict = {
                 "type": "LOOKUP",
                 "name": lkp.get("NAME", ""),
                 "lookup_type": lookup_type,
@@ -235,7 +261,15 @@ class MappingParser:
                 "condition": condition,
                 "table_name": table_name or "",
                 "connection": get_text(lkp, "CONNECTION")
-            })
+            }
+            
+            # Add reusable transformation metadata
+            if is_reusable:
+                lookup_dict["is_reusable"] = True
+                lookup_dict["reusable_name"] = reusable_name or lkp.get("NAME", "")
+                logger.debug(f"Found reusable lookup transformation: {lookup_dict['reusable_name']}")
+            
+            lookups.append(lookup_dict)
         return lookups
     
     def _parse_aggregator(self) -> List[Dict[str, Any]]:
@@ -481,3 +515,156 @@ class MappingParser:
         
         logger.info(f"Parsed {len(connectors)} connectors")
         return connectors
+    
+    def _parse_mapplet_instance(self) -> List[Dict[str, Any]]:
+        """Parse mapplet instances in mapping.
+        
+        Mapplet instances are INSTANCE elements with MAPPLETNAME attribute.
+        They reference reusable mapplets that need to be resolved and inlined.
+        """
+        instances = []
+        for inst in self.root.findall(".//INSTANCE[@MAPPLETNAME]"):
+            mapplet_name = inst.get("MAPPLETNAME", "")
+            instance_name = inst.get("NAME", "")
+            
+            # Parse input port connections
+            input_connections = {}
+            for input_conn in inst.findall(".//MAPPLETINPUTINSTANCE"):
+                input_port = input_conn.get("PORTNAME", "")
+                from_trans = input_conn.get("FROMINSTANCE", "")
+                from_port = input_conn.get("FROMFIELD", "")
+                if input_port and from_trans:
+                    input_connections[input_port] = {
+                        "from_transformation": from_trans,
+                        "from_port": from_port
+                    }
+            
+            # Parse output port connections
+            output_connections = {}
+            for output_conn in inst.findall(".//MAPPLETOUTPUTINSTANCE"):
+                output_port = output_conn.get("PORTNAME", "")
+                to_trans = output_conn.get("TOINSTANCE", "")
+                to_port = output_conn.get("TOFIELD", "")
+                if output_port and to_trans:
+                    output_connections[output_port] = {
+                        "to_transformation": to_trans,
+                        "to_port": to_port
+                    }
+            
+            instances.append({
+                "type": "MAPPLET_INSTANCE",
+                "name": instance_name,
+                "mapplet_ref": mapplet_name,
+                "input_port_mappings": input_connections,
+                "output_port_mappings": output_connections
+            })
+            logger.debug(f"Parsed mapplet instance: {instance_name} referencing {mapplet_name}")
+        
+        return instances
+    
+    def _parse_custom_transformation(self) -> List[Dict[str, Any]]:
+        """Parse Custom/Java transformations.
+        
+        These require manual intervention as they contain custom code
+        that cannot be automatically translated.
+        """
+        custom_transforms = []
+        
+        # Custom transformations
+        for custom in self.root.findall(".//TRANSFORMATION[@TYPE='Custom']"):
+            ports = self._parse_ports(custom)
+            custom_transforms.append({
+                "type": "CUSTOM_TRANSFORMATION",
+                "name": custom.get("NAME", ""),
+                "ports": ports,
+                "requires_manual_intervention": True,
+                "manual_intervention_reason": "Custom transformation requires manual code review and migration",
+                "custom_type": get_text(custom, "CUSTOMTYPE") or "Unknown",
+                "code_reference": get_text(custom, "CODEREFERENCE") or None,
+                "class_name": get_text(custom, "CLASSNAME") or None,
+                "jar_file": get_text(custom, "JARFILE") or None
+            })
+            logger.warning(f"Found custom transformation: {custom.get('NAME', '')} - requires manual intervention")
+        
+        # Java transformations
+        for java in self.root.findall(".//TRANSFORMATION[@TYPE='Java']"):
+            ports = self._parse_ports(java)
+            custom_transforms.append({
+                "type": "CUSTOM_TRANSFORMATION",
+                "name": java.get("NAME", ""),
+                "ports": ports,
+                "requires_manual_intervention": True,
+                "manual_intervention_reason": "Java transformation requires manual code review and migration",
+                "custom_type": "Java",
+                "code_reference": get_text(java, "CODEREFERENCE") or None,
+                "class_name": get_text(java, "CLASSNAME") or None,
+                "jar_file": get_text(java, "JARFILE") or None
+            })
+            logger.warning(f"Found Java transformation: {java.get('NAME', '')} - requires manual intervention")
+        
+        return custom_transforms
+    
+    def _parse_stored_procedure(self) -> List[Dict[str, Any]]:
+        """Parse stored procedure calls.
+        
+        Stored procedures may appear in:
+        - Source Qualifier SQL queries (CALL statements)
+        - Expression transformations (procedure calls)
+        - Dedicated Stored Procedure transformations
+        
+        These require database-specific handling and may need manual intervention.
+        """
+        stored_procs = []
+        
+        # Check for Stored Procedure transformation type
+        for sp in self.root.findall(".//TRANSFORMATION[@TYPE='Stored Procedure']"):
+            ports = self._parse_ports(sp)
+            procedure_name = get_text(sp, "PROCEDURENAME") or sp.get("NAME", "")
+            connection = get_text(sp, "CONNECTION") or get_text(sp, "CONNECTIONNAME")
+            
+            # Parse parameters
+            parameters = []
+            for param in sp.findall(".//PARAMETER"):
+                parameters.append({
+                    "name": param.get("NAME", ""),
+                    "data_type": param.get("DATATYPE", ""),
+                    "direction": param.get("DIRECTION", "INPUT"),  # INPUT, OUTPUT, INPUTOUTPUT
+                    "value": get_text(param, "VALUE")
+                })
+            
+            stored_procs.append({
+                "type": "STORED_PROCEDURE",
+                "name": sp.get("NAME", ""),
+                "ports": ports,
+                "requires_manual_intervention": True,
+                "manual_intervention_reason": "Stored procedure requires database-specific handling and may need manual migration",
+                "procedure_name": procedure_name,
+                "connection": connection,
+                "parameters": parameters,
+                "return_type": get_text(sp, "RETURNTYPE") or "resultset"
+            })
+            logger.warning(f"Found stored procedure: {procedure_name} - may require manual intervention")
+        
+        # Also check Source Qualifier for CALL statements in SQL
+        for sq in self.root.findall(".//TRANSFORMATION[@TYPE='Source Qualifier']"):
+            sql_query = get_text(sq, "SQLQUERY")
+            if sql_query and ("CALL" in sql_query.upper() or "EXEC" in sql_query.upper() or "EXECUTE" in sql_query.upper()):
+                # Extract procedure name from SQL
+                import re
+                call_match = re.search(r'(?:CALL|EXEC|EXECUTE)\s+(\w+)', sql_query, re.IGNORECASE)
+                if call_match:
+                    procedure_name = call_match.group(1)
+                    stored_procs.append({
+                        "type": "STORED_PROCEDURE",
+                        "name": f"{sq.get('NAME', 'SQ')}_SP_CALL",
+                        "ports": self._parse_ports(sq),
+                        "requires_manual_intervention": True,
+                        "manual_intervention_reason": "Stored procedure call in Source Qualifier SQL requires database-specific handling",
+                        "procedure_name": procedure_name,
+                        "connection": get_text(sq, "CONNECTION"),
+                        "sql_query": sql_query,
+                        "source_transformation": sq.get("NAME", "")
+                    })
+                    logger.warning(f"Found stored procedure call in Source Qualifier: {procedure_name} - may require manual intervention")
+        
+        return stored_procs

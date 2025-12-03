@@ -52,20 +52,24 @@ class Profiler:
         with self.graph_store.driver.session() as session:
             stats = {}
             
-            # Count workflows
-            result = session.run("MATCH (w:Workflow) RETURN count(w) as count").single()
+            # Count pipelines (workflows)
+            result = session.run("MATCH (p:Pipeline) RETURN count(p) as count").single()
             stats["total_workflows"] = result["count"] if result else 0
             
-            # Count sessions (tasks)
-            result = session.run("MATCH (s:Session) RETURN count(s) as count").single()
+            # Count tasks (sessions)
+            result = session.run("MATCH (t:Task) RETURN count(t) as count").single()
             stats["total_sessions"] = result["count"] if result else 0
             
-            # Count worklets
-            result = session.run("MATCH (w:Worklet) RETURN count(w) as count").single()
+            # Count sub pipelines (worklets)
+            result = session.run("MATCH (sp:SubPipeline) RETURN count(sp) as count").single()
             stats["total_worklets"] = result["count"] if result else 0
             
-            # Count mappings
-            result = session.run("MATCH (m:Mapping) RETURN count(m) as count").single()
+            # Count transformations (mappings) - filter by source_component_type
+            result = session.run("""
+                MATCH (t:Transformation)
+                WHERE t.source_component_type = 'mapping' OR t.source_component_type IS NULL
+                RETURN count(t) as count
+            """).single()
             stats["total_mappings"] = result["count"] if result else 0
             
             # Count transformations
@@ -96,24 +100,25 @@ class Profiler:
                 "tables": stats["total_tables"]
             }
             
-            # Average tasks per workflow
+            # Average tasks per pipeline
             if stats["total_workflows"] > 0:
                 result = session.run("""
-                    MATCH (w:Workflow)
-                    OPTIONAL MATCH (w)-[:CONTAINS]->(s:Session)
-                    WITH w, count(s) as task_count
+                    MATCH (p:Pipeline)
+                    OPTIONAL MATCH (p)-[:CONTAINS]->(t:Task)
+                    WITH p, count(t) as task_count
                     RETURN avg(task_count) as avg_tasks
                 """).single()
                 stats["average_tasks_per_workflow"] = float(result["avg_tasks"]) if result and result["avg_tasks"] is not None else 0.0
             else:
                 stats["average_tasks_per_workflow"] = 0.0
             
-            # Average transformations per mapping
+            # Average nested transformations per transformation
             if stats["total_mappings"] > 0:
                 result = session.run("""
-                    MATCH (m:Mapping)
-                    OPTIONAL MATCH (m)-[:HAS_TRANSFORMATION]->(t:Transformation)
-                    WITH m, count(t) as trans_count
+                    MATCH (t:Transformation)
+                    WHERE t.source_component_type = 'mapping' OR t.source_component_type IS NULL
+                    OPTIONAL MATCH (t)-[:HAS_TRANSFORMATION]->(nt:Transformation)
+                    WITH t, count(nt) as trans_count
                     RETURN avg(trans_count) as avg_trans
                 """).single()
                 stats["average_transformations_per_mapping"] = float(result["avg_trans"]) if result and result["avg_trans"] is not None else 0.0
@@ -139,48 +144,48 @@ class Profiler:
         """
         logger.info("Profiling workflows...")
         
-        workflows = self.graph_queries.list_workflows()
+        pipelines = self.graph_queries.list_pipelines()
         workflow_profiles = []
         
         with self.graph_store.driver.session() as session:
-            for workflow in workflows:
-                workflow_name = workflow["name"]
+            for pipeline in pipelines:
+                pipeline_name = pipeline["name"]
                 
-                # Get detailed workflow structure
-                workflow_structure = self.graph_queries.get_workflow_structure(workflow_name)
-                if not workflow_structure:
+                # Get detailed pipeline structure
+                pipeline_structure = self.graph_queries.get_pipeline_structure(pipeline_name)
+                if not pipeline_structure:
                     continue
                 
-                # Count worklets
+                # Count sub pipelines (worklets)
                 result = session.run("""
-                    MATCH (w:Workflow {name: $name})-[:CONTAINS]->(wl:Worklet)
-                    RETURN count(wl) as count
-                """, name=workflow_name).single()
+                    MATCH (p:Pipeline {name: $name})-[:CONTAINS]->(sp:SubPipeline)
+                    RETURN count(sp) as count
+                """, name=pipeline_name).single()
                 worklet_count = result["count"] if result else 0
                 
-                # Count mappings via tasks
-                mapping_count = 0
-                for task in workflow_structure.get("tasks", []):
-                    mapping_count += len(task.get("transformations", []))
+                # Count transformations via tasks
+                transformation_count = 0
+                for task in pipeline_structure.get("tasks", []):
+                    transformation_count += len(task.get("transformations", []))
                 
                 # Calculate complexity score
-                task_count = workflow.get("task_count", 0)
-                complexity_score = self._calculate_workflow_complexity(task_count, worklet_count, mapping_count)
+                task_count = pipeline.get("task_count", 0)
+                complexity_score = self._calculate_workflow_complexity(task_count, worklet_count, transformation_count)
                 
                 # Check for dependencies
                 result = session.run("""
-                    MATCH (w:Workflow {name: $name})
-                    OPTIONAL MATCH (w)-[:CONTAINS]->(s:Session)-[:EXECUTES]->(m:Mapping)
-                    OPTIONAL MATCH (m)-[:DEPENDS_ON]->(dep:Mapping)
+                    MATCH (p:Pipeline {name: $name})
+                    OPTIONAL MATCH (p)-[:CONTAINS]->(t:Task)-[:EXECUTES]->(trans:Transformation)
+                    OPTIONAL MATCH (trans)-[:DEPENDS_ON]->(dep:Transformation)
                     RETURN count(DISTINCT dep) > 0 as has_dependencies
-                """, name=workflow_name).single()
+                """, name=pipeline_name).single()
                 has_dependencies = result["has_dependencies"] if result else False
                 
                 workflow_profiles.append({
-                    "name": workflow_name,
+                    "name": pipeline_name,
                     "task_count": task_count,
                     "worklet_count": worklet_count,
-                    "mapping_count": mapping_count,
+                    "mapping_count": transformation_count,
                     "complexity_score": complexity_score,
                     "has_dependencies": has_dependencies
                 })
@@ -206,12 +211,13 @@ class Profiler:
         
         with self.graph_store.driver.session() as session:
             result = session.run("""
-                MATCH (m:Mapping)
-                OPTIONAL MATCH (m)-[:HAS_TRANSFORMATION]->(t:Transformation)
-                WITH m, collect(t) as transformations
-                RETURN m.name as name,
-                       m.mapping_name as mapping_name,
-                       m.complexity as stored_complexity,
+                MATCH (t:Transformation)
+                WHERE t.source_component_type = 'mapping' OR t.source_component_type IS NULL
+                OPTIONAL MATCH (t)-[:HAS_TRANSFORMATION]->(nt:Transformation)
+                WITH t, collect(nt) as transformations
+                RETURN t.name as name,
+                       t.transformation_name as transformation_name,
+                       t.complexity as stored_complexity,
                        size(transformations) as transformation_count,
                        transformations
             """)
@@ -242,7 +248,7 @@ class Profiler:
                 
                 mapping_profiles.append({
                     "name": mapping_name,
-                    "mapping_name": record.get("mapping_name"),
+                    "transformation_name": record.get("transformation_name"),
                     "transformation_count": transformation_count,
                     "expression_complexity": expression_complexity,
                     "lookup_count": lookup_count,
@@ -277,11 +283,12 @@ class Profiler:
             """)
             type_distribution = {record["type"]: record["count"] for record in result}
             
-            # Average transformations per mapping by type
+            # Average nested transformations per transformation by type
             result = session.run("""
-                MATCH (m:Mapping)
-                OPTIONAL MATCH (m)-[:HAS_TRANSFORMATION]->(t:Transformation)
-                WITH m, t.type as trans_type, count(t) as count
+                MATCH (t:Transformation)
+                WHERE t.source_component_type = 'mapping' OR t.source_component_type IS NULL
+                OPTIONAL MATCH (t)-[:HAS_TRANSFORMATION]->(nt:Transformation)
+                WITH t, nt.type as trans_type, count(nt) as count
                 WHERE trans_type IS NOT NULL
                 WITH trans_type, collect(count) as counts
                 RETURN trans_type, avg(counts) as avg_count
