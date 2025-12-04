@@ -13,7 +13,9 @@ Note: Only validates top-level mappings (source_component_type='mapping'),
 not nested transformations (expressions, aggregators, etc.) which are part of mappings.
 
 Usage:
-    python scripts/validate_generated_code.py [--strict] [--verbose]
+    python scripts/validate_generated_code.py [--strict] [--verbose] [--json] [--log-json] [--no-canonical]
+    
+    --log-json: Save detailed JSON logs to workspace/logs/ directory
 """
 
 import sys
@@ -141,9 +143,13 @@ class CodeValidator:
                 continue
             
             # Check if both transformations are mentioned in code
-            if from_trans and from_trans not in code_content:
+            # Source Qualifiers are represented as df_SQ_NAME in code
+            from_trans_in_code = from_trans in code_content or f"df_{from_trans}" in code_content
+            to_trans_in_code = to_trans in code_content or f"df_{to_trans}" in code_content
+            
+            if from_trans and not from_trans_in_code:
                 errors.append(f"Source transformation '{from_trans}' from connector not found in code")
-            if to_trans and to_trans not in code_content:
+            if to_trans and not to_trans_in_code:
                 errors.append(f"Target transformation '{to_trans}' from connector not found in code")
         
         return errors
@@ -357,7 +363,7 @@ class CodeValidator:
         
         # Validate completeness (check transformations and connectors are represented)
         try:
-            model = graph_store.load_transformation(transformation_name)
+            model = self.graph_store.load_transformation(transformation_name)
             if model:
                 # Check transformation completeness
                 trans_errors = self.validate_transformation_completeness(transformation_name, content, model)
@@ -591,30 +597,89 @@ class CodeValidator:
 def main():
     """Main entry point."""
     import argparse
+    from datetime import datetime
     
     parser = argparse.ArgumentParser(description='Validate generated code after AI Review and Fix')
     parser.add_argument('--strict', action='store_true', help='Treat warnings as errors')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
     parser.add_argument('--json', action='store_true', help='Output results as JSON')
     parser.add_argument('--no-canonical', action='store_true', help='Skip canonical model validation')
+    parser.add_argument('--log-json', action='store_true', help='Save detailed JSON logs to file')
     
     args = parser.parse_args()
     
-    validator = CodeValidator(
-        strict=args.strict, 
-        verbose=args.verbose,
-        validate_canonical=not args.no_canonical
-    )
-    results = validator.validate_all()
-    
-    if args.json:
-        print(json.dumps(results, indent=2))
-    else:
-        print(validator._generate_summary())
-    
-    # Exit with error code if validation failed
-    if not results['success']:
+    validator = None
+    try:
+        validator = CodeValidator(
+            strict=args.strict, 
+            verbose=args.verbose,
+            validate_canonical=not args.no_canonical
+        )
+        results = validator.validate_all()
+        
+        # Add metadata to results for JSON logging
+        log_data = {
+            'timestamp': datetime.utcnow().isoformat(),
+            'script': 'validate_generated_code',
+            'arguments': {
+                'strict': args.strict,
+                'verbose': args.verbose,
+                'validate_canonical': not args.no_canonical
+            },
+            'validation_results': results
+        }
+        
+        if args.json:
+            print(json.dumps(log_data, indent=2, default=str))
+        else:
+            print(validator._generate_summary())
+        
+        # Save detailed JSON log file
+        if args.log_json:
+            log_dir = project_root / "workspace" / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            
+            timestamp_str = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            log_file = log_dir / f"generated_code_validation_{timestamp_str}.json"
+            
+            with open(log_file, 'w', encoding='utf-8') as f:
+                json.dump(log_data, f, indent=2, default=str)
+            
+            if not args.json:
+                print(f"\n📄 Detailed JSON log saved to: {log_file}")
+        
+        # Exit with error code if validation failed
+        if not results['success']:
+            sys.exit(1)
+        
+    except Exception as e:
+        logger.error(f"Validation failed: {e}", error=e)
+        print(f"\n❌ Validation failed: {e}")
+        
+        # Save error log if JSON logging is enabled
+        if args.log_json:
+            log_dir = project_root / "workspace" / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            timestamp_str = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            error_log_file = log_dir / f"generated_code_validation_error_{timestamp_str}.json"
+            
+            error_log = {
+                'timestamp': datetime.utcnow().isoformat(),
+                'script': 'validate_generated_code',
+                'status': 'error',
+                'error': str(e),
+                'error_type': type(e).__name__
+            }
+            
+            with open(error_log_file, 'w', encoding='utf-8') as f:
+                json.dump(error_log, f, indent=2, default=str)
+            
+            print(f"📄 Error log saved to: {error_log_file}")
+        
         sys.exit(1)
+    finally:
+        if validator and hasattr(validator, 'graph_store') and validator.graph_store:
+            validator.graph_store.close()
     
     sys.exit(0)
 

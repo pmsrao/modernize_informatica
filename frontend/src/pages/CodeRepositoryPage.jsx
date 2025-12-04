@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../services/api.js';
+import PageTabs from '../components/common/PageTabs.jsx';
+import CodeRepoOverview from '../components/code/CodeRepoOverview.jsx';
+import SyntaxHighlighter from '../components/common/SyntaxHighlighter.jsx';
 
 /**
  * Code Repository Page
@@ -15,6 +18,7 @@ export default function CodeRepositoryPage() {
   const [loading, setLoading] = useState(true);
   const [loadingCode, setLoadingCode] = useState(false);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('Overview');
 
   useEffect(() => {
     loadRepository();
@@ -126,7 +130,7 @@ export default function CodeRepositoryPage() {
 
   const renderTree = (tree, path = '', level = 0) => {
     const items = [];
-    const indent = level * 20;
+    const indent = level * 12;
     
     Object.keys(tree).forEach(key => {
       const currentPath = path ? `${path}/${key}` : key;
@@ -233,7 +237,7 @@ export default function CodeRepositoryPage() {
               )}
             </div>
             {isExpanded && hasChildren && (
-              <div style={{ marginLeft: '20px', marginTop: '4px' }}>
+              <div style={{ marginLeft: '12px', marginTop: '4px' }}>
                 {renderTree(value, currentPath, level + 1)}
               </div>
             )}
@@ -280,26 +284,27 @@ export default function CodeRepositoryPage() {
       padding: '20px',
       background: '#fafafa'
     }}>
-      {/* Header */}
-      <div style={{ 
-        marginBottom: '20px', 
-        borderBottom: '2px solid #ddd', 
-        paddingBottom: '20px' 
-      }}>
-        <h1 style={{ margin: 0, color: '#333' }}>Code Repository</h1>
-        <p style={{ margin: '5px 0', color: '#666', fontSize: '14px' }}>
-          File tree view of generated code repository structure
-        </p>
-      </div>
+      {/* Tabs */}
+      <PageTabs 
+        activeTab={activeTab} 
+        onTabChange={setActiveTab}
+        tabs={['Overview', 'Repository', 'Details']}
+      />
 
-      {/* Main Content */}
-      <div style={{ 
-        display: 'flex', 
-        gap: '20px', 
-        flex: 1, 
-        overflow: 'hidden',
-        minHeight: 0
-      }}>
+      {/* Overview Tab */}
+      {activeTab === 'Overview' && (
+        <CodeRepoOverview onRefresh={loadRepository} />
+      )}
+
+      {/* Repository Tab */}
+      {activeTab === 'Repository' && (
+        <div style={{ 
+          display: 'flex', 
+          gap: '20px', 
+          flex: 1, 
+          overflow: 'hidden',
+          minHeight: 0
+        }}>
         {/* Tree View */}
         <div style={{ 
           width: '450px', 
@@ -391,26 +396,40 @@ export default function CodeRepositoryPage() {
                     </div>
                   </div>
                 ) : (
-                  <pre style={{ 
-                    margin: 0,
-                    padding: '15px',
-                    background: '#fafafa',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    overflow: 'auto',
-                    fontSize: '13px',
-                    fontFamily: 'monospace',
-                    whiteSpace: 'pre',
-                    lineHeight: '1.5'
-                  }}>
-                    <code>{codeContent || '// No code content available'}</code>
-                  </pre>
+                  <SyntaxHighlighter 
+                    code={codeContent || '// No code content available'} 
+                    filename={selectedFile}
+                  />
                 )}
               </div>
             </div>
           )}
         </div>
       </div>
+      )}
+
+      {/* Details Tab */}
+      {activeTab === 'Details' && (
+        <div style={{ 
+          padding: '40px', 
+          textAlign: 'center', 
+          color: '#666',
+          background: 'white',
+          borderRadius: '8px',
+          border: '1px solid #ddd',
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'column'
+        }}>
+          <div style={{ fontSize: '48px', marginBottom: '20px' }}>📄</div>
+          <h2 style={{ margin: '10px 0', color: '#333' }}>File Details</h2>
+          <p style={{ margin: '5px 0', color: '#666' }}>
+            Select a file from the Repository tab to view detailed information
+          </p>
+        </div>
+      )}
     </div>
   );
 }

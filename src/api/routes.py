@@ -1559,6 +1559,34 @@ async def get_graph_statistics():
         )
 
 
+@router.get("/graph/canonical/overview")
+async def get_canonical_overview():
+    """Get comprehensive overview of canonical model using generic terminology.
+    
+    Returns:
+        Overview dictionary with counts, distributions, and health metrics
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        overview = graph_queries.get_canonical_overview()
+        
+        return {
+            "success": True,
+            "overview": overview
+        }
+    except Exception as e:
+        logger.error(f"Canonical overview query failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Canonical overview query failed: {str(e)}"
+        )
+
+
 @router.get("/graph/mappings/{mapping_name}/impact")
 async def get_impact_analysis(mapping_name: str):
     """Get comprehensive impact analysis for a mapping.
@@ -1853,8 +1881,25 @@ async def get_pipeline_structure_endpoint(pipeline_name: str):
 
 
 @router.get("/graph/components")
-async def list_all_components():
-    """List all components (workflows, sessions, worklets, mappings) with file metadata.
+async def list_all_components(
+    type: Optional[str] = None,
+    complexity: Optional[str] = None,
+    has_code: Optional[bool] = None,
+    sort_by: Optional[str] = None,
+    order: Optional[str] = "asc",
+    page: Optional[int] = None,
+    page_size: Optional[int] = None
+):
+    """List all components (pipelines, tasks, transformations, reusable transformations) with file metadata.
+    
+    Query Parameters:
+        type: Filter by component type (pipeline, task, transformation, reusable_transformation, sub_pipeline)
+        complexity: Filter by complexity (LOW, MEDIUM, HIGH)
+        has_code: Filter by whether component has generated code (true/false)
+        sort_by: Sort field (name, complexity, type)
+        order: Sort order (asc, desc)
+        page: Page number for pagination (1-based)
+        page_size: Number of items per page
     
     Returns:
         Dictionary with all components grouped by type and counts
@@ -1872,11 +1917,21 @@ async def list_all_components():
         
         # Get tasks, sub pipelines, and reusable transformations
         with graph_store.driver.session() as session:
-            tasks_result = session.run("""
-                MATCH (t:Task)
-                RETURN t.name as name, t.type as type, t.source_component_type as source_component_type, properties(t) as properties
-                ORDER BY t.name
-            """)
+            # Build query with optional filters
+            task_query = "MATCH (t:Task)"
+            task_where = []
+            task_params = {}
+            
+            if complexity:
+                task_where.append("t.complexity = $complexity")
+                task_params["complexity"] = complexity
+            
+            if task_where:
+                task_query += " WHERE " + " AND ".join(task_where)
+            
+            task_query += " RETURN t.name as name, t.type as type, t.source_component_type as source_component_type, t.complexity as complexity, properties(t) as properties ORDER BY t.name"
+            
+            tasks_result = session.run(task_query, **task_params)
             tasks = [dict(record) for record in tasks_result]
             
             sub_pipelines_result = session.run("""
@@ -1893,7 +1948,7 @@ async def list_all_components():
             """)
             reusable_transformations = [dict(record) for record in reusable_transformations_result]
         
-        # Enhance with file metadata
+        # Enhance with file metadata and code status
         for pipeline in pipelines:
             file_meta = graph_queries.get_component_file_metadata(pipeline["name"], "Pipeline")
             if file_meta:
@@ -1914,17 +1969,97 @@ async def list_all_components():
             if file_meta:
                 reusable_transformation["file_metadata"] = file_meta
         
-        # Get transformations with file metadata
+        # Get transformations with file metadata and code status
         transformations_with_meta = []
         for transformation_name in transformations:
             transformation_info = {"name": transformation_name}
             file_meta = graph_queries.get_component_file_metadata(transformation_name, "Transformation")
             if file_meta:
                 transformation_info["file_metadata"] = file_meta
+            
+            # Check if transformation has code
+            code_files = graph_queries.get_transformation_code_files(transformation_name)
+            transformation_info["has_code"] = len(code_files) > 0
+            transformation_info["code_file_count"] = len(code_files)
+            
+            # Get complexity if available
+            with graph_store.driver.session() as session:
+                result = session.run("""
+                    MATCH (t:Transformation {name: $name, source_component_type: 'mapping'})
+                    RETURN t.complexity as complexity
+                """, name=transformation_name).single()
+                if result and result.get("complexity"):
+                    transformation_info["complexity"] = result["complexity"]
+            
             transformations_with_meta.append(transformation_info)
         
+        # Apply filters
+        if type:
+            if type == "pipeline":
+                pipelines = pipelines
+                tasks = []
+                transformations_with_meta = []
+                reusable_transformations = []
+                sub_pipelines = []
+            elif type == "task":
+                pipelines = []
+                transformations_with_meta = []
+                reusable_transformations = []
+                sub_pipelines = []
+            elif type == "transformation":
+                pipelines = []
+                tasks = []
+                reusable_transformations = []
+                sub_pipelines = []
+            elif type == "reusable_transformation":
+                pipelines = []
+                tasks = []
+                transformations_with_meta = []
+                sub_pipelines = []
+            elif type == "sub_pipeline":
+                pipelines = []
+                tasks = []
+                transformations_with_meta = []
+                reusable_transformations = []
+        
+        if complexity:
+            transformations_with_meta = [t for t in transformations_with_meta if t.get("complexity") == complexity]
+            tasks = [t for t in tasks if t.get("complexity") == complexity]
+        
+        if has_code is not None:
+            transformations_with_meta = [t for t in transformations_with_meta if t.get("has_code") == has_code]
+        
+        # Apply sorting
+        if sort_by:
+            reverse_order = (order or "asc").lower() == "desc"
+            if sort_by == "name":
+                pipelines.sort(key=lambda x: x.get("name", ""), reverse=reverse_order)
+                tasks.sort(key=lambda x: x.get("name", ""), reverse=reverse_order)
+                transformations_with_meta.sort(key=lambda x: x.get("name", ""), reverse=reverse_order)
+                reusable_transformations.sort(key=lambda x: x.get("name", ""), reverse=reverse_order)
+            elif sort_by == "complexity":
+                complexity_order = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "UNKNOWN": 0}
+                transformations_with_meta.sort(key=lambda x: complexity_order.get(x.get("complexity", "UNKNOWN"), 0), reverse=reverse_order)
+                tasks.sort(key=lambda x: complexity_order.get(x.get("complexity", "UNKNOWN"), 0), reverse=reverse_order)
+        
+        # Apply pagination (if specified)
+        total_items = len(pipelines) + len(tasks) + len(transformations_with_meta) + len(reusable_transformations) + len(sub_pipelines)
+        pagination_info = None
+        if page is not None and page_size is not None:
+            # For simplicity, pagination applies to transformations only
+            # Full pagination would require combining all component types
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            transformations_with_meta = transformations_with_meta[start_idx:end_idx]
+            pagination_info = {
+                "page": page,
+                "page_size": page_size,
+                "total_items": total_items,
+                "total_pages": (total_items + page_size - 1) // page_size if page_size > 0 else 1
+            }
+        
         # Return generic platform-agnostic names
-        return {
+        result = {
             "success": True,
             "pipelines": pipelines,
             "tasks": tasks,
@@ -1936,9 +2071,14 @@ async def list_all_components():
                 "tasks": len(tasks),
                 "sub_pipelines": len(sub_pipelines),
                 "reusable_transformations": len(reusable_transformations),
-                "transformations": len(transformations)
+                "transformations": len(transformations_with_meta)
             }
         }
+        
+        if pagination_info:
+            result["pagination"] = pagination_info
+        
+        return result
     except Exception as e:
         logger.error(f"List components failed: {str(e)}", error=e)
         raise HTTPException(
@@ -2049,6 +2189,34 @@ async def get_source_repository():
         }
 
 
+@router.get("/graph/source/overview")
+async def get_source_overview():
+    """Get overview statistics for source repository.
+    
+    Returns:
+        Overview dictionary with file counts, types, and sizes
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        overview = graph_queries.get_source_overview()
+        
+        return {
+            "success": True,
+            "overview": overview
+        }
+    except Exception as e:
+        logger.error(f"Source overview query failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Source overview query failed: {str(e)}"
+        )
+
+
 @router.get("/graph/code/repository")
 async def get_code_repository():
     """Get repository tree structure of generated code.
@@ -2088,6 +2256,34 @@ async def get_code_repository():
             },
             "message": "No code files found in repository"
         }
+
+
+@router.get("/graph/code/overview")
+async def get_code_overview():
+    """Get overview statistics for code repository.
+    
+    Returns:
+        Overview dictionary with code file counts, types, and quality metrics
+    """
+    if not graph_store or not graph_queries:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Graph store not enabled. Set ENABLE_GRAPH_STORE=true"
+        )
+    
+    try:
+        overview = graph_queries.get_code_overview()
+        
+        return {
+            "success": True,
+            "overview": overview
+        }
+    except Exception as e:
+        logger.error(f"Code overview query failed: {str(e)}", error=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Code overview query failed: {str(e)}"
+        )
 
 
 @router.get("/graph/code/{mapping_name}")
@@ -2166,7 +2362,11 @@ async def get_source_file(file_path: str):
                 )
         else:
             # Relative path - resolve from staging directory
-            full_path = (project_root / "test_log" / "staging" / decoded_path).resolve()
+            # Try workspace first, then fallback to legacy test_log
+            full_path = (project_root / "workspace" / "staging" / decoded_path).resolve()
+            if not full_path.exists():
+                # Legacy: try test_log
+                full_path = (project_root / "test_log" / "staging" / decoded_path).resolve()
             
             if not str(full_path).startswith(str(project_root.resolve())):
                 raise HTTPException(
@@ -2247,16 +2447,29 @@ async def get_code_file(file_path: str):
                     detail="Access denied: File path outside project directory"
                 )
         else:
-            # Relative path - try test_log/generated_ai first, then test_log/generated, then project root
-            # Check if path starts with test_log/generated_ai or test_log/generated
-            if decoded_path.startswith("test_log/generated_ai/"):
+            # Relative path - try workspace/generated_ai first, then workspace/generated, then project root
+            # Check if path starts with workspace/generated_ai or workspace/generated
+            if decoded_path.startswith("workspace/generated_ai/"):
+                full_path = (project_root / decoded_path).resolve()
+            elif decoded_path.startswith("workspace/generated/"):
+                full_path = (project_root / decoded_path).resolve()
+            elif decoded_path.startswith("test_log/generated_ai/"):
+                # Legacy support for old test_log paths
                 full_path = (project_root / decoded_path).resolve()
             elif decoded_path.startswith("test_log/generated/"):
+                # Legacy support for old test_log paths
                 full_path = (project_root / decoded_path).resolve()
             else:
-                # Try generated_ai first, then fallback to generated
-                full_path = (project_root / "test_log" / "generated_ai" / decoded_path).resolve()
+                # Try workspace/generated_ai first, then fallback to workspace/generated
+                # Also check legacy test_log paths for backward compatibility
+                full_path = (project_root / "workspace" / "generated_ai" / decoded_path).resolve()
                 if not full_path.exists():
+                    full_path = (project_root / "workspace" / "generated" / decoded_path).resolve()
+                if not full_path.exists():
+                    # Legacy: try test_log paths
+                    full_path = (project_root / "test_log" / "generated_ai" / decoded_path).resolve()
+                if not full_path.exists():
+                    # Legacy: try test_log generated
                     full_path = (project_root / "test_log" / "generated" / decoded_path).resolve()
         
         if not str(full_path).startswith(str(project_root.resolve())):

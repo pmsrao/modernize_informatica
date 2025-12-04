@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../services/api.js';
+import PageTabs from '../components/common/PageTabs.jsx';
+import AssessmentOverview from '../components/assessment/AssessmentOverview.jsx';
 
 /**
  * Assessment Page
@@ -17,7 +19,7 @@ export default function AssessmentPage() {
   const [summary, setSummary] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [waves, setWaves] = useState(null);
-  const [activeTab, setActiveTab] = useState('summary');
+  const [activeTab, setActiveTab] = useState('Overview');
 
   useEffect(() => {
     loadAssessmentData();
@@ -100,45 +102,12 @@ export default function AssessmentPage() {
       padding: '20px',
       background: '#fafafa'
     }}>
-      {/* Header */}
-      <div style={{ 
-        marginBottom: '20px', 
-        borderBottom: '2px solid #ddd', 
-        paddingBottom: '20px' 
-      }}>
-        <h1 style={{ margin: 0, color: '#333' }}>Pre-Migration Assessment</h1>
-        <p style={{ margin: '5px 0', color: '#666', fontSize: '14px' }}>
-          Repository analysis, migration blockers, effort estimates, and wave planning
-        </p>
-      </div>
-
       {/* Tabs */}
-      <div style={{
-        display: 'flex',
-        gap: '10px',
-        marginBottom: '20px',
-        borderBottom: '1px solid #ddd'
-      }}>
-        {['summary', 'blockers', 'waves', 'analysis'].map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            style={{
-              padding: '10px 20px',
-              background: activeTab === tab ? '#4A90E2' : 'transparent',
-              color: activeTab === tab ? 'white' : '#333',
-              border: 'none',
-              borderBottom: activeTab === tab ? '3px solid #4A90E2' : '3px solid transparent',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: activeTab === tab ? 'bold' : 'normal',
-              textTransform: 'capitalize'
-            }}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
+      <PageTabs 
+        activeTab={activeTab} 
+        onTabChange={setActiveTab}
+        tabs={['Overview', 'Blockers', 'Waves', 'Analysis']}
+      />
 
       {/* Content */}
       <div style={{ 
@@ -148,10 +117,10 @@ export default function AssessmentPage() {
         borderRadius: '8px',
         padding: '20px'
       }}>
-        {activeTab === 'summary' && <SummaryView summary={summary} />}
-        {activeTab === 'blockers' && <BlockersView blockers={analysis?.blockers || []} />}
-        {activeTab === 'waves' && <WavesView waves={waves} />}
-        {activeTab === 'analysis' && <AnalysisView analysis={analysis} />}
+        {activeTab === 'Overview' && <AssessmentOverview onRefresh={loadAssessmentData} />}
+        {activeTab === 'Blockers' && <BlockersView blockers={analysis?.blockers || []} />}
+        {activeTab === 'Waves' && <WavesView waves={waves} />}
+        {activeTab === 'Analysis' && <AnalysisView analysis={analysis} />}
       </div>
     </div>
   );

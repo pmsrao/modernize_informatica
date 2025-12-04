@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../services/api.js';
+import PageTabs from '../components/common/PageTabs.jsx';
+import SourceRepoOverview from '../components/source/SourceRepoOverview.jsx';
+import EnhancedSearch from '../components/common/EnhancedSearch.jsx';
+import SyntaxHighlighter from '../components/common/SyntaxHighlighter.jsx';
 
 /**
  * Source Repo View Page
@@ -15,6 +19,9 @@ export default function SourceRepoViewPage() {
   const [loading, setLoading] = useState(true);
   const [loadingFile, setLoadingFile] = useState(false);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('Overview');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [fileTypeFilter, setFileTypeFilter] = useState('all');
 
   useEffect(() => {
     loadRepository();
@@ -103,9 +110,43 @@ export default function SourceRepoViewPage() {
 
   const renderTree = (tree, path = '', level = 0) => {
     const items = [];
-    const indent = level * 20;
+    const indent = level * 12;
     
-    Object.keys(tree).forEach(key => {
+    // Filter by search term and file type
+    const filteredKeys = Object.keys(tree).filter(key => {
+      // Search filter
+      if (searchTerm && !key.toLowerCase().includes(searchTerm.toLowerCase())) {
+        return false;
+      }
+      
+      // File type filter
+      if (fileTypeFilter !== 'all') {
+        const value = tree[key];
+        if (typeof value === 'object' && value !== null && value.type === 'file') {
+          const filePath = value.file_path || value.path || key;
+          if (!filePath.toLowerCase().endsWith(fileTypeFilter.toLowerCase())) {
+            return false;
+          }
+        } else if (typeof value === 'object' && value !== null) {
+          // It's a directory, check if it contains matching files
+          const hasMatchingFiles = Object.keys(value).some(subKey => {
+            const subValue = value[subKey];
+            if (typeof subValue === 'object' && subValue !== null && subValue.type === 'file') {
+              const filePath = subValue.file_path || subValue.path || subKey;
+              return filePath.toLowerCase().endsWith(fileTypeFilter.toLowerCase());
+            }
+            return false;
+          });
+          if (!hasMatchingFiles) {
+            return false;
+          }
+        }
+      }
+      
+      return true;
+    });
+    
+    filteredKeys.forEach(key => {
       const currentPath = path ? `${path}/${key}` : key;
       const value = tree[key];
       
@@ -194,7 +235,7 @@ export default function SourceRepoViewPage() {
               )}
             </div>
             {isExpanded && hasChildren && (
-              <div style={{ marginLeft: '20px', marginTop: '4px' }}>
+              <div style={{ marginLeft: '12px', marginTop: '4px' }}>
                 {renderTree(value, currentPath, level + 1)}
               </div>
             )}
@@ -241,26 +282,26 @@ export default function SourceRepoViewPage() {
       padding: '20px',
       background: '#fafafa'
     }}>
-      {/* Header */}
-      <div style={{ 
-        marginBottom: '20px', 
-        borderBottom: '2px solid #ddd', 
-        paddingBottom: '20px' 
-      }}>
-        <h1 style={{ margin: 0, color: '#333' }}>Source Repo View</h1>
-        <p style={{ margin: '5px 0', color: '#666', fontSize: '14px' }}>
-          File tree view of source repository structure (staging directory)
-        </p>
-      </div>
+      {/* Tabs */}
+      <PageTabs 
+        activeTab={activeTab} 
+        onTabChange={setActiveTab}
+        tabs={['Overview', 'Files', 'Details']}
+      />
 
       {/* Main Content */}
-      <div style={{ 
-        display: 'flex', 
-        gap: '20px', 
-        flex: 1, 
-        overflow: 'hidden',
-        minHeight: 0
-      }}>
+      {activeTab === 'Overview' && (
+        <SourceRepoOverview onRefresh={loadRepository} />
+      )}
+
+      {activeTab === 'Files' && (
+        <div style={{ 
+          display: 'flex', 
+          gap: '20px', 
+          flex: 1, 
+          overflow: 'hidden',
+          minHeight: 0
+        }}>
         {/* Tree View */}
         <div style={{ 
           width: '450px', 
@@ -274,11 +315,35 @@ export default function SourceRepoViewPage() {
           <div style={{ 
             padding: '15px', 
             borderBottom: '1px solid #ddd',
-            background: '#f5f5f5',
-            fontWeight: 'bold',
-            fontSize: '14px'
+            background: '#f5f5f5'
           }}>
-            Source Repository Structure
+            <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '10px' }}>
+              Source Repository Structure
+            </div>
+            <EnhancedSearch
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Search files..."
+            />
+            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginTop: '10px' }}>
+              {['all', '.xml', '.json', '.txt'].map(type => (
+                <button
+                  key={type}
+                  onClick={() => setFileTypeFilter(type)}
+                  style={{
+                    padding: '4px 8px',
+                    background: fileTypeFilter === type ? '#4A90E2' : 'white',
+                    color: fileTypeFilter === type ? 'white' : '#666',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '11px'
+                  }}
+                >
+                  {type === 'all' ? 'All' : type}
+                </button>
+              ))}
+            </div>
           </div>
           <div style={{ flex: 1, overflow: 'auto', padding: '15px', fontFamily: 'monospace', fontSize: '12px' }}>
             {!hasData ? (
@@ -352,26 +417,34 @@ export default function SourceRepoViewPage() {
                     </div>
                   </div>
                 ) : (
-                  <pre style={{ 
-                    margin: 0,
-                    padding: '15px',
-                    background: '#fafafa',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    overflow: 'auto',
-                    fontSize: '13px',
-                    fontFamily: 'monospace',
-                    whiteSpace: 'pre',
-                    lineHeight: '1.5'
-                  }}>
-                    <code>{fileContent || '// No file content available'}</code>
-                  </pre>
+                  <SyntaxHighlighter 
+                    code={fileContent || '// No file content available'} 
+                    filename={selectedFile}
+                  />
                 )}
               </div>
             </div>
           )}
         </div>
       </div>
+      )}
+
+      {activeTab === 'Details' && (
+        <div style={{ 
+          padding: '40px', 
+          textAlign: 'center', 
+          color: '#666',
+          background: 'white',
+          borderRadius: '8px',
+          border: '1px solid #ddd'
+        }}>
+          <div style={{ fontSize: '48px', marginBottom: '20px' }}>📄</div>
+          <h2 style={{ margin: '10px 0', color: '#333' }}>File Details</h2>
+          <p style={{ margin: '5px 0', color: '#666' }}>
+            Select a file from the Files tab to view detailed information
+          </p>
+        </div>
+      )}
     </div>
   );
 }

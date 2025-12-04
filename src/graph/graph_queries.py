@@ -213,6 +213,201 @@ class GraphQueries:
             
             return stats
     
+    def get_canonical_overview(self) -> Dict[str, Any]:
+        """Get comprehensive overview of canonical model using generic terminology.
+        
+        Returns:
+            Overview dictionary with counts, distributions, and health metrics
+        """
+        with self.graph_store.driver.session() as session:
+            overview = {
+                "counts": {},
+                "complexity_distribution": {},
+                "transformation_type_distribution": {},
+                "component_health": {}
+            }
+            
+            # Count Pipelines (workflows)
+            result = session.run("MATCH (p:Pipeline) RETURN count(p) as count").single()
+            overview["counts"]["pipelines"] = result["count"] if result else 0
+            
+            # Count Tasks (sessions)
+            result = session.run("MATCH (t:Task) RETURN count(t) as count").single()
+            overview["counts"]["tasks"] = result["count"] if result else 0
+            
+            # Count Transformations (mappings)
+            result = session.run("""
+                MATCH (t:Transformation)
+                WHERE t.source_component_type = 'mapping' OR t.source_component_type IS NULL
+                RETURN count(t) as count
+            """).single()
+            overview["counts"]["transformations"] = result["count"] if result else 0
+            
+            # Count Reusable Transformations (mapplets)
+            result = session.run("MATCH (rt:ReusableTransformation) RETURN count(rt) as count").single()
+            overview["counts"]["reusable_transformations"] = result["count"] if result else 0
+            
+            # Count Sub Pipelines (worklets)
+            result = session.run("MATCH (sp:SubPipeline) RETURN count(sp) as count").single()
+            overview["counts"]["sub_pipelines"] = result["count"] if result else 0
+            
+            # Complexity distribution (for transformations/mappings)
+            result = session.run("""
+                MATCH (t:Transformation)
+                WHERE t.source_component_type = 'mapping' OR t.source_component_type IS NULL
+                RETURN COALESCE(t.complexity, 'UNKNOWN') as complexity, count(t) as count
+                ORDER BY complexity
+            """)
+            overview["complexity_distribution"] = {record["complexity"]: record["count"] for record in result}
+            
+            # Transformation type distribution (nested transformations within mappings)
+            result = session.run("""
+                MATCH (t:Transformation)
+                WHERE t.type IS NOT NULL AND t.source_component_type <> 'mapping'
+                RETURN t.type as type, count(t) as count
+                ORDER BY count DESC
+            """)
+            overview["transformation_type_distribution"] = {record["type"]: record["count"] for record in result}
+            
+            # Component health metrics
+            # Transformations with code (have HAS_CODE relationship to GeneratedCode)
+            result = session.run("""
+                MATCH (t:Transformation {source_component_type: 'mapping'})-[:HAS_CODE]->(c:GeneratedCode)
+                RETURN count(DISTINCT t) as count
+            """).single()
+            with_code = result["count"] if result else 0
+            
+            # Total transformations (mappings)
+            result = session.run("""
+                MATCH (t:Transformation)
+                WHERE t.source_component_type = 'mapping' OR t.source_component_type IS NULL
+                RETURN count(t) as count
+            """).single()
+            total_transformations = result["count"] if result else 0
+            
+            # Transformations with code that have been validated
+            # Check if GeneratedCode has validation metadata (quality_score > 0)
+            result = session.run("""
+                MATCH (t:Transformation {source_component_type: 'mapping'})-[:HAS_CODE]->(c:GeneratedCode)
+                WHERE c.quality_score IS NOT NULL AND c.quality_score > 0
+                RETURN count(DISTINCT t) as count
+            """).single()
+            validated = result["count"] if result else 0
+            
+            # Transformations with code that have been AI reviewed
+            result = session.run("""
+                MATCH (t:Transformation {source_component_type: 'mapping'})-[:HAS_CODE]->(c:GeneratedCode)
+                WHERE c.ai_reviewed = true
+                RETURN count(DISTINCT t) as count
+            """).single()
+            ai_reviewed = result["count"] if result else 0
+            
+            # Transformations with code that have been AI fixed
+            result = session.run("""
+                MATCH (t:Transformation {source_component_type: 'mapping'})-[:HAS_CODE]->(c:GeneratedCode)
+                WHERE c.ai_fixed = true
+                RETURN count(DISTINCT t) as count
+            """).single()
+            ai_fixed = result["count"] if result else 0
+            
+            # Needs review: transformations with code but not validated, plus transformations without code
+            needs_review = max(0, total_transformations - validated)
+            
+            overview["component_health"] = {
+                "with_code": with_code,
+                "without_code": max(0, total_transformations - with_code),
+                "validated": validated,
+                "ai_reviewed": ai_reviewed,
+                "ai_fixed": ai_fixed,
+                "needs_review": needs_review,
+                "total": total_transformations
+            }
+            
+            return overview
+    
+    def get_source_overview(self) -> Dict[str, Any]:
+        """Get overview statistics for source repository.
+        
+        Returns:
+            Overview dictionary with file counts, types, and sizes
+        """
+        from pathlib import Path
+        import os
+        
+        project_root = Path(__file__).parent.parent.parent
+        staging_dir = project_root / "workspace" / "staging"
+        
+        overview = {
+            "total_files": 0,
+            "file_types": {},
+            "total_size": 0,
+            "directories": 0
+        }
+        
+        if not staging_dir.exists():
+            return overview
+        
+        def count_files(path: Path):
+            """Recursively count files and collect statistics."""
+            try:
+                for item in path.iterdir():
+                    if item.is_file():
+                        overview["total_files"] += 1
+                        ext = item.suffix.lower() or "no_extension"
+                        overview["file_types"][ext] = overview["file_types"].get(ext, 0) + 1
+                        try:
+                            overview["total_size"] += item.stat().st_size
+                        except:
+                            pass
+                    elif item.is_dir():
+                        overview["directories"] += 1
+                        count_files(item)
+            except PermissionError:
+                pass
+        
+        count_files(staging_dir)
+        
+        return overview
+    
+    def get_code_overview(self) -> Dict[str, Any]:
+        """Get overview statistics for code repository.
+        
+        Returns:
+            Overview dictionary with code file counts, types, and quality metrics
+        """
+        overview = {
+            "total_files": 0,
+            "code_types": {},
+            "quality_distribution": {"high": 0, "medium": 0, "low": 0},
+            "total_size": 0
+        }
+        
+        try:
+            code_files = self.list_all_code_files()
+            overview["total_files"] = len(code_files)
+            
+            for code_file in code_files:
+                # Count by code type
+                code_type = code_file.get("code_type", "unknown")
+                overview["code_types"][code_type] = overview["code_types"].get(code_type, 0) + 1
+                
+                # Quality distribution
+                quality = code_file.get("quality_score", 0)
+                if quality >= 80:
+                    overview["quality_distribution"]["high"] += 1
+                elif quality >= 60:
+                    overview["quality_distribution"]["medium"] += 1
+                else:
+                    overview["quality_distribution"]["low"] += 1
+                
+                # Size (if available)
+                if code_file.get("file_size"):
+                    overview["total_size"] += code_file.get("file_size", 0)
+        except Exception as e:
+            logger.warning(f"Error getting code overview: {str(e)}")
+        
+        return overview
+    
     def find_pattern_across_transformations(self, pattern_type: str, pattern_value: str) -> List[Dict[str, Any]]:
         """Find transformations using a specific pattern.
         

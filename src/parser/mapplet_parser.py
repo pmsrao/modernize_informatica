@@ -159,15 +159,29 @@ class MappletParser:
         return transformations
     
     def _parse_source_qualifier(self, element: ET.Element) -> List[Dict[str, Any]]:
-        """Parse Source Qualifier transformations."""
+        """Parse Source Qualifier transformations.
+        
+        Handles both 'Source Qualifier' (with space) and 'SourceQualifier' (no space) formats.
+        """
         sqs = []
-        for sq in element.findall(".//TRANSFORMATION[@TYPE='Source Qualifier']"):
+        # Try both formats: with space and without space
+        for sq in element.findall(".//TRANSFORMATION[@TYPE='Source Qualifier']") + \
+                   element.findall(".//TRANSFORMATION[@TYPE='SourceQualifier']"):
             ports = self._parse_ports(sq)
+            
+            # Get SQL query from ATTRIBUTE or SQLQUERY element
+            sql_query = sq.get("Sql Query", "") or get_text(sq, "SQLQUERY")
+            if not sql_query:
+                # Try to get from ATTRIBUTE element
+                attr_elem = sq.find(".//ATTRIBUTE[@NAME='Sql Query']")
+                if attr_elem is not None:
+                    sql_query = attr_elem.get("VALUE", "")
+            
             sqs.append({
                 "type": "SOURCE_QUALIFIER",
                 "name": sq.get("NAME", ""),
                 "ports": ports,
-                "sql_query": get_text(sq, "SQLQUERY"),
+                "sql_query": sql_query,
                 "filter": get_text(sq, "FILTER")
             })
         return sqs
@@ -415,11 +429,24 @@ class MappletParser:
         return normalizers
     
     def _parse_update_strategy(self, element: ET.Element) -> List[Dict[str, Any]]:
-        """Parse Update Strategy transformations."""
+        """Parse Update Strategy transformations.
+        
+        Handles both 'Update Strategy' (with space) and 'UpdateStrategy' (no space) formats.
+        """
         update_strategies = []
-        for us in element.findall(".//TRANSFORMATION[@TYPE='Update Strategy']"):
+        # Try both formats: with space and without space
+        for us in element.findall(".//TRANSFORMATION[@TYPE='Update Strategy']") + \
+                   element.findall(".//TRANSFORMATION[@TYPE='UpdateStrategy']"):
             ports = self._parse_ports(us)
+            
+            # Get update strategy expression from ATTRIBUTE or UPDATESTRATEGYEXPRESSION element
             update_strategy_expr = get_text(us, "UPDATESTRATEGYEXPRESSION")
+            if not update_strategy_expr:
+                # Try to get from ATTRIBUTE element
+                attr_elem = us.find(".//ATTRIBUTE[@NAME='Update Strategy Expression']")
+                if attr_elem is not None:
+                    update_strategy_expr = attr_elem.get("VALUE", "")
+            
             update_strategies.append({
                 "type": "UPDATE_STRATEGY",
                 "name": us.get("NAME", ""),

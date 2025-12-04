@@ -2226,6 +2226,21 @@ class TestFlow:
             print("⚠️  AI agents not available, skipping code review")
             return {"reviewed": [], "failed": [], "skipped": True}
         
+        # Initialize graph store for saving AI review status
+        graph_store = None
+        try:
+            from config import settings
+            enable_graph = getattr(settings, 'enable_graph_store', False) or os.getenv('ENABLE_GRAPH_STORE', 'false').lower() == 'true'
+            if enable_graph:
+                graph_store = GraphStore(
+                    uri=getattr(settings, 'neo4j_uri', os.getenv('NEO4J_URI', 'bolt://localhost:7687')),
+                    user=getattr(settings, 'neo4j_user', os.getenv('NEO4J_USER', 'neo4j')),
+                    password=getattr(settings, 'neo4j_password', os.getenv('NEO4J_PASSWORD', 'password'))
+                )
+        except Exception as e:
+            print(f"⚠️  Graph store not available for AI review tracking: {e}")
+            graph_store = None
+        
         # Find generated code files (preserve directory structure)
         code_files = []
         for ext in ["*.py", "*.sql"]:
@@ -2278,6 +2293,10 @@ class TestFlow:
                 # Review code
                 review = orchestrator.review_code(code)
                 
+                # Extract AI review score
+                ai_review_score = review.get("score")
+                ai_fixed = False
+                
                 # Preserve directory structure in output
                 rel_dir = os.path.dirname(rel_path)
                 if rel_dir:
@@ -2320,6 +2339,7 @@ class TestFlow:
                     try:
                         fix_result = orchestrator.fix_code(code, review.get("issues", []))
                         fixed_code = fix_result.get("fixed_code", code)
+                        ai_fixed = True  # Mark as fixed
                         
                         # Re-detect code type after fix (may have changed)
                         actual_code_type_after_fix = self._detect_code_type(fixed_code, filename)
@@ -2366,14 +2386,42 @@ class TestFlow:
                     else:
                         print(f"   ✅ Code copied to: {code_file} (no fixes needed)")
                 
+                # Save AI review status to Neo4j if graph store is available
+                if graph_store:
+                    try:
+                        # The file_path in Neo4j is the relative path from project root
+                        # We need to use the same path format that was saved during code generation
+                        project_root = Path(__file__).parent.parent
+                        original_generated_file = os.path.join(generated_dir, rel_path)
+                        if os.path.exists(original_generated_file):
+                            abs_path = os.path.abspath(original_generated_file)
+                            try:
+                                rel_path_to_save = os.path.relpath(abs_path, project_root)
+                            except ValueError:
+                                # If paths are on different drives (Windows), use absolute path
+                                rel_path_to_save = abs_path
+                            
+                            # Update AI review status using the same file_path format
+                            graph_store.update_ai_review_status(
+                                file_path=rel_path_to_save,
+                                ai_review_score=ai_review_score,
+                                ai_fixed=ai_fixed
+                            )
+                            print(f"   ✅ AI review status saved to Neo4j")
+                    except Exception as e:
+                        print(f"   ⚠️  Failed to save AI review status to Neo4j: {e}")
+                
                 print(f"   ✅ Review saved to: {review_file}")
                 print(f"   📊 Issues found: {len(review.get('issues', []))}")
+                if ai_review_score is not None:
+                    print(f"   📊 AI Review Score: {ai_review_score}/100")
                 
                 results["reviewed"].append({
                     "file": rel_path,
                     "review_file": review_file,
                     "issues_count": len(review.get("issues", [])),
-                    "fixed": review.get("needs_fix", False),
+                    "fixed": ai_fixed,
+                    "ai_review_score": ai_review_score,
                     "code_type": actual_code_type
                 })
                 

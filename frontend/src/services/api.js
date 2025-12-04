@@ -294,6 +294,33 @@ class APIClient {
     return this.request('/api/v1/graph/statistics');
   }
 
+  async getCanonicalOverview() {
+    try {
+      return await this.request('/api/v1/graph/canonical/overview');
+    } catch (error) {
+      console.error('Error getting canonical overview:', error);
+      return { success: false, overview: null, message: error.message };
+    }
+  }
+
+  async getSourceOverview() {
+    try {
+      return await this.request('/api/v1/graph/source/overview');
+    } catch (error) {
+      console.error('Error getting source overview:', error);
+      return { success: false, overview: null, message: error.message };
+    }
+  }
+
+  async getCodeOverview() {
+    try {
+      return await this.request('/api/v1/graph/code/overview');
+    } catch (error) {
+      console.error('Error getting code overview:', error);
+      return { success: false, overview: null, message: error.message };
+    }
+  }
+
   // Pipeline Endpoints (generic platform-agnostic terminology)
   async listPipelines() {
     try {
@@ -315,9 +342,20 @@ class APIClient {
 
 
   // Component Endpoints
-  async getAllComponents() {
+  async getAllComponents(filters = {}) {
     try {
-      return await this.request('/api/v1/graph/components');
+      const params = new URLSearchParams();
+      if (filters.type) params.append('type', filters.type);
+      if (filters.complexity) params.append('complexity', filters.complexity);
+      if (filters.has_code !== undefined) params.append('has_code', filters.has_code);
+      if (filters.sort_by) params.append('sort_by', filters.sort_by);
+      if (filters.order) params.append('order', filters.order);
+      if (filters.page) params.append('page', filters.page);
+      if (filters.page_size) params.append('page_size', filters.page_size);
+      
+      const queryString = params.toString();
+      const endpoint = queryString ? `/api/v1/graph/components?${queryString}` : '/api/v1/graph/components';
+      return await this.request(endpoint);
     } catch (error) {
       console.error('Error getting all components:', error);
       return { 

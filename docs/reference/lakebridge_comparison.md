@@ -410,6 +410,8 @@ API_PORT=8000
    - Canonical model creation with lineage and SCD detection
    - AST-based expression translation (100+ Informatica functions)
    - Multi-format code generation (PySpark, DLT, SQL, Specs, Tests, Orchestration)
+   - Source Qualifier handling (SQ transformations properly converted to DataFrame reads)
+   - Comprehensive validation (canonical model validation, generated code validation)
 
 2. **Assessment and Analysis** (requires graph store)
    - Pre-migration profiling and complexity analysis
@@ -427,6 +429,8 @@ API_PORT=8000
    - 11 specialized AI agents
    - Multi-provider LLM support with fallback
    - Response caching for performance
+   - AI review status tracking (separate from quality scores)
+   - Automated code fixing based on AI review
 
 5. **Storage and Infrastructure**
    - File-based storage (default)
@@ -533,6 +537,23 @@ Graph-First Mode (Optional, when ENABLE_GRAPH_STORE=true):
 ---
 
 *Document created: 2025-12-02*
-*Last updated: 2025-12-03*
+*Last updated: 2025-12-04*
 *Status: Current state comparison - reflects actual implementation as of December 2025*
+
+## Recent Enhancements (December 2024)
+
+### Code Generation Improvements
+- **Source Qualifier Support**: Source Qualifiers (SQ_*) are now properly handled in PySpark generation, creating DataFrame reads from SQL queries
+- **Joiner Enhancement**: Joiners now correctly use connector information to identify source DataFrames
+- **Validation Updates**: Code validation recognizes Source Qualifiers as `df_SQ_NAME` patterns in generated code
+
+### Validation Enhancements
+- **Transformation Type Recognition**: CUSTOM_TRANSFORMATION and STORED_PROCEDURE are now recognized as valid transformation types
+- **Connector Validation**: Improved validation logic to handle Source Qualifiers and mapplet instances correctly
+- **Comprehensive Testing**: Field-level lineage, parser tests, and semantic tag detection tests added
+
+### AI Review Tracking
+- **Separate Metrics**: AI review status (`ai_reviewed`, `ai_review_score`, `ai_fixed`) tracked separately from code quality scores
+- **Component Health UI**: Enhanced UI shows AI review metrics alongside quality scores
+- **Complete Workflow**: Canonical Model → Code Generation → Quality Check → AI Review → AI Fix (if needed)
 

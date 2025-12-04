@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../services/api.js';
+import PageTabs from '../components/common/PageTabs.jsx';
+import CodeOverview from '../components/code/CodeOverview.jsx';
+import SyntaxHighlighter from '../components/common/SyntaxHighlighter.jsx';
 
 /**
  * Code View Page
@@ -19,6 +22,7 @@ export default function CodeViewPage() {
   const [loading, setLoading] = useState(true);
   const [loadingCode, setLoadingCode] = useState(false);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('Overview');
 
   useEffect(() => {
     loadWorkflows();
@@ -247,26 +251,27 @@ export default function CodeViewPage() {
       padding: '20px',
       background: '#fafafa'
     }}>
-      {/* Header */}
-      <div style={{ 
-        marginBottom: '20px', 
-        borderBottom: '2px solid #ddd', 
-        paddingBottom: '20px' 
-      }}>
-        <h1 style={{ margin: 0, color: '#333' }}>Code View</h1>
-        <p style={{ margin: '5px 0', color: '#666', fontSize: '14px' }}>
-          View generated code organized by workflow → task → transformation → code files
-        </p>
-      </div>
+      {/* Tabs */}
+      <PageTabs 
+        activeTab={activeTab} 
+        onTabChange={setActiveTab}
+        tabs={['Overview', 'Code Files', 'Details']}
+      />
 
-      {/* Main Content */}
-      <div style={{ 
-        display: 'flex', 
-        gap: '20px', 
-        flex: 1, 
-        overflow: 'hidden',
-        minHeight: 0
-      }}>
+      {/* Overview Tab */}
+      {activeTab === 'Overview' && (
+        <CodeOverview onRefresh={loadWorkflows} />
+      )}
+
+      {/* Code Files Tab */}
+      {activeTab === 'Code Files' && (
+        <div style={{ 
+          display: 'flex', 
+          gap: '20px', 
+          flex: 1, 
+          overflow: 'hidden',
+          minHeight: 0
+        }}>
         {/* Workflow/Session/Mapping Tree */}
         <div style={{ 
           width: '350px', 
@@ -548,22 +553,10 @@ export default function CodeViewPage() {
                         )}
                       </div>
                     )}
-                    <pre style={{ 
-                      margin: 0,
-                      padding: '15px',
-                      background: '#fafafa',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      overflow: 'auto',
-                      fontSize: '13px',
-                      fontFamily: 'monospace',
-                      whiteSpace: 'pre-wrap',
-                      wordWrap: 'break-word',
-                      lineHeight: '1.5',
-                      maxHeight: '100%'
-                    }}>
-                      <code style={{ display: 'block', whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>{codeContent || '// No code content available'}</code>
-                    </pre>
+                    <SyntaxHighlighter 
+                      code={codeContent || '// No code content available'} 
+                      filename={selectedCodeFile?.file_path}
+                    />
                   </div>
                 ) : (
                   <div style={{ 
@@ -581,6 +574,30 @@ export default function CodeViewPage() {
           )}
         </div>
       </div>
+      )}
+
+      {/* Details Tab */}
+      {activeTab === 'Details' && (
+        <div style={{ 
+          padding: '40px', 
+          textAlign: 'center', 
+          color: '#666',
+          background: 'white',
+          borderRadius: '8px',
+          border: '1px solid #ddd',
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'column'
+        }}>
+          <div style={{ fontSize: '48px', marginBottom: '20px' }}>💻</div>
+          <h2 style={{ margin: '10px 0', color: '#333' }}>Code File Details</h2>
+          <p style={{ margin: '5px 0', color: '#666' }}>
+            Select a code file from the Code Files tab to view detailed information
+          </p>
+        </div>
+      )}
     </div>
   );
 }

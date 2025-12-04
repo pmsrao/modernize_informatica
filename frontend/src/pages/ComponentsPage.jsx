@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../services/api.js';
+import PageTabs from '../components/common/PageTabs.jsx';
+import ComponentsOverview from '../components/components/ComponentsOverview.jsx';
+import EnhancedSearch from '../components/common/EnhancedSearch.jsx';
 
 /**
  * Components Page - Shows all uploaded components from Neo4j
@@ -26,6 +29,8 @@ export default function ComponentsPage() {
   const [error, setError] = useState(null);
   const [filterType, setFilterType] = useState('all'); // 'all', 'workflow', 'session', 'worklet', 'mapping', 'mapplet'
   const [selectedComponent, setSelectedComponent] = useState(null);
+  const [activeTab, setActiveTab] = useState('Overview');
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     loadComponents();
@@ -101,14 +106,14 @@ export default function ComponentsPage() {
     }
   };
 
-  const renderComponentCard = (component, type) => {
+  const renderComponentCard = (component, type, index) => {
     const fileMeta = component.file_metadata || {};
     const color = getComponentTypeColor(type);
     const icon = getComponentTypeIcon(type);
 
     return (
       <div
-        key={component.name}
+        key={`${type}-${component.name}-${index}`}
         onClick={() => setSelectedComponent({ ...component, type })}
         style={{
           border: `2px solid ${selectedComponent?.name === component.name ? color : '#ddd'}`,
@@ -158,6 +163,17 @@ export default function ComponentsPage() {
         mapplets: filterType === 'mapplet' ? components.mapplets : []
       };
 
+  // Apply search filter
+  const applySearchFilter = (componentList) => {
+    if (!searchTerm) return componentList;
+    const searchLower = searchTerm.toLowerCase();
+    return componentList.filter(comp => {
+      const name = (comp.name || '').toLowerCase();
+      const filename = (comp.file_metadata?.filename || '').toLowerCase();
+      return name.includes(searchLower) || filename.includes(searchLower);
+    });
+  };
+
   if (loading) {
     return (
       <div style={{ padding: '40px', textAlign: 'center' }}>
@@ -185,15 +201,29 @@ export default function ComponentsPage() {
 
   return (
     <div style={{ padding: '20px', height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '20px', borderBottom: '2px solid #ddd', paddingBottom: '20px' }}>
-        <h1 style={{ margin: 0, color: '#333' }}>Component View</h1>
-        <p style={{ margin: '5px 0', color: '#666', fontSize: '14px' }}>
-          All components loaded from Neo4j database
-        </p>
-      </div>
+      {/* Tabs */}
+      <PageTabs 
+        activeTab={activeTab} 
+        onTabChange={setActiveTab}
+        tabs={['Overview', 'Components', 'Details']}
+      />
 
-      {/* Summary Cards - Reduced Size */}
+      {/* Overview Tab */}
+      {activeTab === 'Overview' && (
+        <ComponentsOverview onRefresh={loadComponents} />
+      )}
+
+      {/* Components Tab */}
+      {activeTab === 'Components' && (
+        <>
+          {/* Search */}
+          <EnhancedSearch
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Search components..."
+          />
+          
+          {/* Summary Cards - Reduced Size */}
       <div style={{ 
         display: 'flex', 
         gap: '10px',
@@ -301,72 +331,72 @@ export default function ComponentsPage() {
 
       {/* Components Grid */}
       <div style={{ flex: 1, overflow: 'auto' }}>
-        {(filterType === 'all' || filterType === 'workflow') && filteredComponents.workflows.length > 0 && (
+        {(filterType === 'all' || filterType === 'workflow') && applySearchFilter(filteredComponents.workflows).length > 0 && (
           <div style={{ marginBottom: '30px' }}>
-            <h2 style={{ marginBottom: '15px', color: '#333' }}>Workflows ({filteredComponents.workflows.length})</h2>
+            <h2 style={{ marginBottom: '15px', color: '#333' }}>Workflows ({applySearchFilter(filteredComponents.workflows).length})</h2>
             <div style={{ 
               display: 'grid', 
               gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', 
               gap: '15px' 
             }}>
-              {filteredComponents.workflows.map(wf => renderComponentCard(wf, 'workflow'))}
+              {applySearchFilter(filteredComponents.workflows).map((wf, idx) => renderComponentCard(wf, 'workflow', idx))}
             </div>
           </div>
         )}
 
-        {(filterType === 'all' || filterType === 'session') && filteredComponents.sessions.length > 0 && (
+        {(filterType === 'all' || filterType === 'session') && applySearchFilter(filteredComponents.sessions).length > 0 && (
           <div style={{ marginBottom: '30px' }}>
-            <h2 style={{ marginBottom: '15px', color: '#333' }}>Sessions ({filteredComponents.sessions.length})</h2>
+            <h2 style={{ marginBottom: '15px', color: '#333' }}>Sessions ({applySearchFilter(filteredComponents.sessions).length})</h2>
             <div style={{ 
               display: 'grid', 
               gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', 
               gap: '15px' 
             }}>
-              {filteredComponents.sessions.map(sess => renderComponentCard(sess, 'session'))}
+              {applySearchFilter(filteredComponents.sessions).map((sess, idx) => renderComponentCard(sess, 'session', idx))}
             </div>
           </div>
         )}
 
-        {(filterType === 'all' || filterType === 'worklet') && filteredComponents.worklets.length > 0 && (
+        {(filterType === 'all' || filterType === 'worklet') && applySearchFilter(filteredComponents.worklets).length > 0 && (
           <div style={{ marginBottom: '30px' }}>
-            <h2 style={{ marginBottom: '15px', color: '#333' }}>Worklets ({filteredComponents.worklets.length})</h2>
+            <h2 style={{ marginBottom: '15px', color: '#333' }}>Worklets ({applySearchFilter(filteredComponents.worklets).length})</h2>
             <div style={{ 
               display: 'grid', 
               gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', 
               gap: '15px' 
             }}>
-              {filteredComponents.worklets.map(wl => renderComponentCard(wl, 'worklet'))}
+              {applySearchFilter(filteredComponents.worklets).map((wl, idx) => renderComponentCard(wl, 'worklet', idx))}
             </div>
           </div>
         )}
 
-        {(filterType === 'all' || filterType === 'mapping') && filteredComponents.mappings.length > 0 && (
+        {(filterType === 'all' || filterType === 'mapping') && applySearchFilter(filteredComponents.mappings).length > 0 && (
           <div style={{ marginBottom: '30px' }}>
-            <h2 style={{ marginBottom: '15px', color: '#333' }}>Mappings ({filteredComponents.mappings.length})</h2>
+            <h2 style={{ marginBottom: '15px', color: '#333' }}>Mappings ({applySearchFilter(filteredComponents.mappings).length})</h2>
             <div style={{ 
               display: 'grid', 
               gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', 
               gap: '15px' 
             }}>
-              {filteredComponents.mappings.map(m => renderComponentCard(m, 'mapping'))}
+              {applySearchFilter(filteredComponents.mappings).map((m, idx) => renderComponentCard(m, 'mapping', idx))}
             </div>
           </div>
         )}
 
-        {(filterType === 'all' || filterType === 'mapplet') && filteredComponents.mapplets.length > 0 && (
+        {(filterType === 'all' || filterType === 'mapplet') && applySearchFilter(filteredComponents.mapplets).length > 0 && (
           <div style={{ marginBottom: '30px' }}>
-            <h2 style={{ marginBottom: '15px', color: '#333' }}>Mapplets ({filteredComponents.mapplets.length})</h2>
+            <h2 style={{ marginBottom: '15px', color: '#333' }}>Mapplets ({applySearchFilter(filteredComponents.mapplets).length})</h2>
             <div style={{ 
               display: 'grid', 
               gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', 
               gap: '15px' 
             }}>
-              {filteredComponents.mapplets.map(mpl => renderComponentCard(mpl, 'mapplet'))}
+              {applySearchFilter(filteredComponents.mapplets).map((mpl, idx) => renderComponentCard(mpl, 'mapplet', idx))}
             </div>
           </div>
         )}
 
-        {Object.values(filteredComponents).every(arr => arr.length === 0) && (
+        {Object.values(filteredComponents).every(arr => applySearchFilter(arr).length === 0) && (
           <div style={{ padding: '60px', textAlign: 'center', color: '#999' }}>
             <div style={{ fontSize: '64px', marginBottom: '20px' }}>📭</div>
             <h3>No components found</h3>
@@ -444,6 +474,31 @@ export default function ComponentsPage() {
               </pre>
             </div>
           )}
+        </div>
+      )}
+        </>
+      )}
+
+      {/* Details Tab */}
+      {activeTab === 'Details' && (
+        <div style={{ 
+          padding: '40px', 
+          textAlign: 'center', 
+          color: '#666',
+          background: 'white',
+          borderRadius: '8px',
+          border: '1px solid #ddd',
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'column'
+        }}>
+          <div style={{ fontSize: '48px', marginBottom: '20px' }}>📋</div>
+          <h2 style={{ margin: '10px 0', color: '#333' }}>Component Details</h2>
+          <p style={{ margin: '5px 0', color: '#666' }}>
+            Select a component from the Components tab to view detailed information
+          </p>
         </div>
       )}
     </div>

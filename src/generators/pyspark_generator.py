@@ -68,9 +68,24 @@ class PySparkGenerator:
         # Track reusable transformations to generate as functions
         reusable_transforms = {}
         
-        # Process transformations in order
+        # Separate Source Qualifiers - they should be processed first
+        source_qualifiers = []
+        other_transformations = []
+        
         transformations = model.get("transformations", [])
         for trans in transformations:
+            if trans.get("type") == "SOURCE_QUALIFIER":
+                source_qualifiers.append(trans)
+            else:
+                other_transformations.append(trans)
+        
+        # Process Source Qualifiers first
+        for trans in source_qualifiers:
+            lines.extend(self._generate_source_qualifier(trans))
+            lines.append("")
+        
+        # Process other transformations in order
+        for trans in other_transformations:
             trans_type = trans.get("type", "")
             trans_name = trans.get("name", "")
             
@@ -103,7 +118,7 @@ class PySparkGenerator:
                 else:
                     lines.extend(self._generate_lookup(trans))
             elif trans_type == "JOINER":
-                lines.extend(self._generate_joiner(trans))
+                lines.extend(self._generate_joiner(trans, model))
             elif trans_type == "AGGREGATOR":
                 lines.extend(self._generate_aggregator(trans))
             elif trans_type == "FILTER":
@@ -118,6 +133,8 @@ class PySparkGenerator:
                 lines.extend(self._generate_union(trans))
             elif trans_type == "UPDATE_STRATEGY":
                 lines.extend(self._generate_update_strategy(trans))
+            elif trans_type == "SOURCE_QUALIFIER":
+                lines.extend(self._generate_source_qualifier(trans))
             
             lines.append("")
         
@@ -235,8 +252,13 @@ class PySparkGenerator:
         
         return lines
     
-    def _generate_joiner(self, trans: Dict[str, Any]) -> List[str]:
-        """Generate code for Joiner transformation."""
+    def _generate_joiner(self, trans: Dict[str, Any], model: Dict[str, Any] = None) -> List[str]:
+        """Generate code for Joiner transformation.
+        
+        Args:
+            trans: Joiner transformation
+            model: Optional canonical model to find connectors
+        """
         lines = []
         trans_name = trans.get('name', '')
         lines.append(f"# Joiner: {trans_name}")
@@ -244,27 +266,64 @@ class PySparkGenerator:
         join_type = trans.get("join_type", "INNER").lower()
         conditions = trans.get("conditions", [])
         
+        # Find source DataFrames from connectors
+        df1_name = None
+        df2_name = None
+        
+        if model:
+            connectors = model.get("connectors", [])
+            # Find connectors that feed into this joiner
+            input_connectors = [c for c in connectors if c.get("to_transformation") == trans_name]
+            
+            if len(input_connectors) >= 2:
+                # Use first two input transformations as join sources
+                df1_name = input_connectors[0].get("from_transformation", "")
+                df2_name = input_connectors[1].get("from_transformation", "")
+            elif len(input_connectors) == 1:
+                # Only one input - use it as df1, need to infer df2
+                df1_name = input_connectors[0].get("from_transformation", "")
+                df2_name = "df2"  # Fallback
+        
+        # Default to df1/df2 if not found from connectors
+        if not df1_name:
+            df1_name = "df1"
+        if not df2_name:
+            df2_name = "df2"
+        
+        # Use df_ prefix for transformation names
+        if df1_name and not df1_name.startswith("df_"):
+            df1_var = f"df_{df1_name}"
+        else:
+            df1_var = df1_name
+        
+        if df2_name and not df2_name.startswith("df_"):
+            df2_var = f"df_{df2_name}"
+        else:
+            df2_var = df2_name
+        
         # Check if we should use broadcast join for small tables
-        # Look for optimization hints or check if right side is likely small
         use_broadcast = trans.get("_optimization_hint") == "broadcast_join" or \
                        trans.get("right_table_size", "unknown") == "small"
         
         if conditions:
             join_condition = " && ".join([
-                f"df1['{c.get('left_port', '')}'] == df2['{c.get('right_port', '')}']"
+                f"{df1_var}['{c.get('left_port', '')}'] == {df2_var}['{c.get('right_port', '')}']"
                 for c in conditions
             ])
             
             if use_broadcast:
                 lines.append(f"# Using broadcast join for small right table (optimization)")
-                lines.append(f"df2_broadcast = F.broadcast(df2)")
-                lines.append(f"df = df1.join(df2_broadcast, {join_condition}, '{join_type}')")
+                lines.append(f"{df2_var}_broadcast = F.broadcast({df2_var})")
+                lines.append(f"df_{trans_name} = {df1_var}.join({df2_var}_broadcast, {join_condition}, '{join_type}')")
             else:
-                lines.append(f"df = df1.join(df2, {join_condition}, '{join_type}')")
-                lines.append(f"# Performance hint: Consider broadcast join if df2 is small (< 100MB)")
+                lines.append(f"df_{trans_name} = {df1_var}.join({df2_var}, {join_condition}, '{join_type}')")
+                lines.append(f"# Performance hint: Consider broadcast join if {df2_var} is small (< 100MB)")
         else:
             lines.append(f"# Join conditions not fully specified for {trans_name}")
-            lines.append(f"# df = df1.join(df2, join_condition, '{join_type}')")
+            lines.append(f"# df_{trans_name} = {df1_var}.join({df2_var}, join_condition, '{join_type}')")
+        
+        # Update main df to point to joiner result
+        lines.append(f"df = df_{trans_name}")
         
         return lines
     
@@ -408,6 +467,63 @@ class PySparkGenerator:
         lines.append(f"# Update Strategy: {trans.get('name', '')}")
         lines.append("# Update strategy logic (DD_INSERT, DD_UPDATE, DD_DELETE, DD_REJECT)")
         lines.append("# This typically requires Delta merge operations")
+        return lines
+    
+    def _generate_source_qualifier(self, trans: Dict[str, Any]) -> List[str]:
+        """Generate code for source qualifier transformation.
+        
+        Source Qualifiers read from source tables. They should create a DataFrame
+        that can be used by downstream transformations.
+        
+        Args:
+            trans: Source qualifier transformation
+            
+        Returns:
+            List of code lines
+        """
+        lines = []
+        trans_name = trans.get("name", "UNKNOWN")
+        sql_query = trans.get("sql_query", "")
+        filter_condition = trans.get("filter", "")
+        
+        # Extract table name from SQL query if available
+        # Format: "SELECT * FROM TABLE_NAME" or "SELECT * FROM DATABASE.TABLE_NAME"
+        table_name = None
+        if sql_query:
+            # Try to extract table name from SQL
+            import re
+            match = re.search(r'FROM\s+([\w\.]+)', sql_query, re.IGNORECASE)
+            if match:
+                table_name = match.group(1)
+        
+        # If no table name found, try to infer from transformation name
+        # Source Qualifiers often follow pattern: SQ_TABLENAME
+        if not table_name and trans_name.startswith("SQ_"):
+            # Try to extract table name from SQ_ prefix
+            potential_table = trans_name[3:]  # Remove "SQ_" prefix
+            table_name = potential_table
+        
+        if table_name:
+            # Generate DataFrame read
+            lines.append(f"# Source Qualifier: {trans_name}")
+            lines.append(f"df_{trans_name} = spark.table('{table_name}')")
+            
+            # Apply filter if present
+            if filter_condition:
+                lines.append(f"df_{trans_name} = df_{trans_name}.filter({filter_condition})")
+        else:
+            # Fallback: use SQL query directly if available
+            if sql_query:
+                lines.append(f"# Source Qualifier: {trans_name}")
+                lines.append(f"df_{trans_name} = spark.sql(\"\"\"{sql_query}\"\"\")")
+                if filter_condition:
+                    lines.append(f"df_{trans_name} = df_{trans_name}.filter({filter_condition})")
+            else:
+                # Last resort: placeholder
+                lines.append(f"# Source Qualifier: {trans_name}")
+                lines.append(f"# TODO: Implement source qualifier for {trans_name}")
+                lines.append(f"df_{trans_name} = spark.table('UNKNOWN_TABLE')")
+        
         return lines
     
     def _translate_expression_simple(self, expression: str) -> str:

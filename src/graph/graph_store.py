@@ -1667,6 +1667,23 @@ class GraphStore:
         logger.info(f"Successfully saved code metadata: {file_path}")
         return file_path
     
+    def update_ai_review_status(self, file_path: str, ai_review_score: float = None,
+                               ai_fixed: bool = False) -> None:
+        """Update AI review status for a code file.
+        
+        Args:
+            file_path: Path to the generated code file
+            ai_review_score: Score from AI review (0-100, optional)
+            ai_fixed: Whether code was fixed by AI agents
+        """
+        logger.info(f"Updating AI review status for {file_path}")
+        
+        with self.driver.session() as session:
+            session.execute_write(self._update_ai_review_status_tx,
+                                 file_path, ai_review_score, ai_fixed)
+        
+        logger.info(f"Successfully updated AI review status: {file_path}")
+    
     @staticmethod
     def _create_code_metadata_tx(tx, mapping_name: str, code_type: str, file_path: str,
                                  language: str, quality_score: float = None):
@@ -1689,6 +1706,29 @@ class GraphStore:
             MATCH (t:Transformation {name: $mapping_name, source_component_type: 'mapping'})
             MERGE (t)-[:HAS_CODE]->(c)
         """, file_path=file_path, mapping_name=mapping_name, props=code_props)
+    
+    @staticmethod
+    def _update_ai_review_status_tx(tx, file_path: str, ai_review_score: float = None,
+                                   ai_fixed: bool = False):
+        """Transaction function to update AI review status."""
+        from datetime import datetime
+        
+        update_props = {
+            "ai_reviewed": True,
+            "ai_reviewed_at": datetime.now().isoformat()
+        }
+        
+        if ai_review_score is not None:
+            update_props["ai_review_score"] = ai_review_score
+        
+        if ai_fixed:
+            update_props["ai_fixed"] = True
+            update_props["ai_fixed_at"] = datetime.now().isoformat()
+        
+        tx.run("""
+            MATCH (c:GeneratedCode {file_path: $file_path})
+            SET c += $props
+        """, file_path=file_path, props=update_props)
     
     def get_code_metadata(self, mapping_name: str) -> List[Dict[str, Any]]:
         """Get all code metadata for a mapping.

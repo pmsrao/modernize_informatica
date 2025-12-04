@@ -50,6 +50,18 @@ class Parser:
 
     def parse_primary(self):
         ttype, tval = self.advance()
+        
+        # Handle unary minus (negative numbers)
+        if ttype == "OP" and tval == "-":
+            # Check if next token is a number
+            next_type, next_val = self.peek()
+            if next_type == "NUMBER":
+                self.advance()  # Consume the number
+                num_val = float(next_val) if "." in next_val else int(next_val)
+                return Literal(-num_val)
+            # If not a number, treat as binary operator (handled in parse_expr)
+            raise ValueError(f"Unexpected operator in primary expression: {tval}")
+        
         if ttype == "NUMBER":
             return Literal(float(tval) if "." in tval else int(tval))
         if ttype == "STRING":
@@ -76,6 +88,7 @@ class Parser:
             if self.peek()[0] == "RPAREN":
                 self.advance()
                 break
+            # Parse argument (which may include unary minus)
             args.append(self.parse_expr())
             if self.peek()[0] == "COMMA":
                 self.advance()

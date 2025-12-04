@@ -20,7 +20,9 @@ Additionally, it can validate enhancements in Neo4j:
 - Control tasks
 
 Usage:
-    python scripts/validate_canonical_model.py [--path PATH] [--strict] [--verbose] [--enhancements] [--json]
+    python scripts/validate_canonical_model.py [--path PATH] [--strict] [--verbose] [--enhancements] [--json] [--log-json]
+    
+    --log-json: Save detailed JSON logs to workspace/logs/ directory
 """
 
 import sys
@@ -141,10 +143,19 @@ class CanonicalModelValidator:
         model_errors = []
         model_warnings = []
         
-        # Skip validation for sessions (they reference mappings, don't contain transformations directly)
+        # Skip validation for sessions, workflows, and worklets (they reference mappings, don't contain transformations directly)
         source_component_type = model.get('source_component_type', 'mapping')
-        if source_component_type == 'session':
-            # Sessions are valid by default (they reference mappings)
+        if source_component_type in ['session', 'workflow', 'worklet']:
+            # Sessions, workflows, and worklets are valid by default (they reference mappings or are orchestration structures)
+            self.stats['valid_models'] += 1
+            return {
+                'valid': True,
+                'errors': [],
+                'warnings': []
+            }
+        
+        # Skip parse_summary files (they're metadata, not canonical models)
+        if model_name and ('parse_summary' in model_name.lower() or 'summary' in model_name.lower()):
             self.stats['valid_models'] += 1
             return {
                 'valid': True,
@@ -297,7 +308,8 @@ class CanonicalModelValidator:
             valid_types = [
                 'EXPRESSION', 'LOOKUP', 'AGGREGATOR', 'JOINER', 'FILTER',
                 'ROUTER', 'SORTER', 'RANKER', 'NORMALIZER', 'UNION',
-                'UPDATE_STRATEGY', 'MAPPLET_INSTANCE', 'SOURCE_QUALIFIER'
+                'UPDATE_STRATEGY', 'MAPPLET_INSTANCE', 'SOURCE_QUALIFIER',
+                'CUSTOM_TRANSFORMATION', 'STORED_PROCEDURE'
             ]
             if 'type' in trans and trans['type'] not in valid_types:
                 warnings.append({
@@ -593,8 +605,20 @@ class CanonicalModelValidator:
         # A transformation is orphaned if:
         # - It's not connected from any source/input_port or transformation
         # - It's not connected to any target/output_port or transformation
+        # Exception: Mapplet instances use port mappings instead of connectors, so check those separately
         orphaned = []
         for trans_name in transformations:
+            # Find the transformation object to check its type
+            trans_obj = next((t for t in model.get("transformations", []) if t.get("name") == trans_name), None)
+            
+            # Check if it's a mapplet instance with port mappings
+            if trans_obj and trans_obj.get("type") == "MAPPLET_INSTANCE":
+                input_mappings = trans_obj.get("input_port_mappings", {})
+                output_mappings = trans_obj.get("output_port_mappings", {})
+                # Mapplet instances are connected if they have port mappings
+                if input_mappings or output_mappings:
+                    continue  # Not orphaned - has port mappings
+            
             is_connected_from = trans_name in connected_to or trans_name in sources or trans_name in input_ports
             is_connected_to = trans_name in connected_from or trans_name in targets or trans_name in output_ports
             
@@ -1269,6 +1293,7 @@ class CanonicalModelValidator:
 def main():
     """Main entry point."""
     import argparse
+    from datetime import datetime
     
     parser = argparse.ArgumentParser(description='Validate canonical models')
     parser.add_argument('--path', type=str, help='Path to directory containing canonical model JSON files')
@@ -1276,6 +1301,7 @@ def main():
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
     parser.add_argument('--enhancements', action='store_true', help='Also validate Neo4j enhancements')
     parser.add_argument('--json', action='store_true', help='Output results as JSON')
+    parser.add_argument('--log-json', action='store_true', help='Save detailed JSON logs to file')
     
     args = parser.parse_args()
     
@@ -1288,18 +1314,46 @@ def main():
         )
         results = validator.validate_all(path=args.path)
         
+        # Add metadata to results for JSON logging
+        log_data = {
+            'timestamp': datetime.utcnow().isoformat(),
+            'script': 'validate_canonical_model',
+            'arguments': {
+                'path': args.path,
+                'strict': args.strict,
+                'verbose': args.verbose,
+                'enhancements': args.enhancements
+            },
+            'validation_results': results
+        }
+        
         if args.json:
-            print(json.dumps(results, indent=2, default=str))
+            print(json.dumps(log_data, indent=2, default=str))
         else:
             print(results['summary'])
         
-        # Save results to file if enhancements were validated
+        # Save detailed JSON log file
+        if args.log_json or args.enhancements:
+            log_dir = project_root / "workspace" / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            
+            timestamp_str = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            log_file = log_dir / f"canonical_model_validation_{timestamp_str}.json"
+            
+            with open(log_file, 'w', encoding='utf-8') as f:
+                json.dump(log_data, f, indent=2, default=str)
+            
+            if not args.json:
+                print(f"\n📄 Detailed JSON log saved to: {log_file}")
+        
+        # Save results to file if enhancements were validated (legacy behavior)
         if args.enhancements and results.get('enhancements'):
             output_file = project_root / "workspace" / "canonical_model_validation.json"
             output_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(output_file, 'w') as f:
+            with open(output_file, 'w', encoding='utf-8') as f:
                 json.dump(results, f, indent=2, default=str)
-            print(f"\n📄 Detailed results saved to: {output_file}")
+            if not args.json:
+                print(f"📄 Enhancement results saved to: {output_file}")
         
         # Exit with error code if validation failed
         if not results['success']:
@@ -1315,6 +1369,27 @@ def main():
     except Exception as e:
         logger.error(f"Validation failed: {e}", error=e)
         print(f"\n❌ Validation failed: {e}")
+        
+        # Save error log if JSON logging is enabled
+        if args.log_json:
+            log_dir = project_root / "workspace" / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            timestamp_str = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            error_log_file = log_dir / f"canonical_model_validation_error_{timestamp_str}.json"
+            
+            error_log = {
+                'timestamp': datetime.utcnow().isoformat(),
+                'script': 'validate_canonical_model',
+                'status': 'error',
+                'error': str(e),
+                'error_type': type(e).__name__
+            }
+            
+            with open(error_log_file, 'w', encoding='utf-8') as f:
+                json.dump(error_log, f, indent=2, default=str)
+            
+            print(f"📄 Error log saved to: {error_log_file}")
+        
         sys.exit(1)
     finally:
         if validator:

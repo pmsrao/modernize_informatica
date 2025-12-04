@@ -140,10 +140,10 @@ make hierarchy
 
 **What it does:**
 - Generates hierarchy diagrams showing component relationships
-- Saves diagrams to `test_log/diagrams/`
+- Saves diagrams to `workspace/diagrams/`
 
 **Output:**
-- `test_log/diagrams/hierarchy_*.png` or similar
+- `workspace/diagrams/hierarchy_*.png` or similar
 
 ---
 
@@ -157,10 +157,10 @@ make lineage
 
 **What it does:**
 - Generates lineage diagrams showing data flow
-- Saves diagrams to `test_log/diagrams/`
+- Saves diagrams to `workspace/diagrams/`
 
 **Output:**
-- `test_log/diagrams/lineage_*.png` or similar
+- `workspace/diagrams/lineage_*.png` or similar
 
 ---
 
@@ -174,10 +174,10 @@ make canonical
 
 **What it does:**
 - Generates visual representations of canonical models
-- Saves images to `test_log/diagrams/`
+- Saves images to `workspace/diagrams/`
 
 **Output:**
-- `test_log/diagrams/canonical_*.png` or similar
+- `workspace/diagrams/canonical_*.png` or similar
 
 ---
 
@@ -190,19 +190,19 @@ make code
 ```
 
 **What it does:**
-- Loads canonical models (prefers enhanced from `test_log/parse_ai/`, falls back to `test_log/parsed/`)
+- Loads canonical models (prefers enhanced from `workspace/parse_ai/`, falls back to `workspace/parsed/`)
 - **If Neo4j enabled**: Uses workflow-aware generation (organizes by pipeline structure)
 - **If Neo4j disabled**: Uses file-based generation (flat structure)
 - Generates PySpark, DLT, and SQL code
-- Saves code to `test_log/generated/`
+- Saves code to `workspace/generated/`
 
 **Output:**
-- `test_log/generated/{transformation_name}/` directories with code files
-- `test_log/generated/generation_summary.json`
+- `workspace/generated/{transformation_name}/` directories with code files
+- `workspace/generated/generation_summary.json`
 
 **Workflow-Aware Structure** (if Neo4j enabled):
 ```
-test_log/generated/workflows/
+workspace/generated/workflows/
 ├── {pipeline_name}/
 │   ├── sessions/
 │   │   └── {task_name}/
@@ -215,7 +215,7 @@ test_log/generated/workflows/
 
 **File-Based Structure** (if Neo4j disabled):
 ```
-test_log/generated/
+workspace/generated/
 ├── {transformation_name}/
 │   ├── {transformation_name}_pyspark.py
 │   ├── {transformation_name}_dlt.py
@@ -233,15 +233,15 @@ make review
 ```
 
 **What it does:**
-- Finds all generated code files in `test_log/generated/`
+- Finds all generated code files in `workspace/generated/`
 - Reviews each file for issues
 - Fixes code if issues are found
-- Saves reviewed and fixed code to `test_log/generated_ai/`
+- Saves reviewed and fixed code to `workspace/generated_ai/`
 
 **Output:**
-- `test_log/generated_ai/{filename}` (fixed code files)
-- `test_log/generated_ai/{filename}_review.json` (review results)
-- `test_log/generated_ai/review_summary.json`
+- `workspace/generated_ai/{filename}` (fixed code files)
+- `workspace/generated_ai/{filename}_review.json` (review results)
+- `workspace/generated_ai/review_summary.json`
 
 **Note**: Requires LLM configuration (OpenAI API key or similar).
 
@@ -256,14 +256,14 @@ make diff
 ```
 
 **What it does:**
-- Compares `test_log/parsed/` vs `test_log/parse_ai/` (canonical models)
-- Compares `test_log/generated/` vs `test_log/generated_ai/` (code)
+- Compares `workspace/parsed/` vs `workspace/parse_ai/` (canonical models)
+- Compares `workspace/generated/` vs `workspace/generated_ai/` (code)
 - Generates HTML diff reports
 
 **Output:**
-- `test_log/diffs/index.html` (main diff report)
-- `test_log/diffs/parsed_vs_enhanced.html` (canonical model diffs)
-- `test_log/diffs/generated_vs_reviewed.html` (code diffs)
+- `workspace/diffs/index.html` (main diff report)
+- `workspace/diffs/parsed_vs_enhanced.html` (canonical model diffs)
+- `workspace/diffs/generated_vs_reviewed.html` (code diffs)
 
 ---
 
@@ -276,7 +276,7 @@ make test-all
 ```
 
 This will:
-1. Clean `test_log/` directory
+1. Clean `workspace/` directory
 2. Upload files
 3. Parse files
 4. Enhance with AI
@@ -287,7 +287,7 @@ This will:
 9. Review and fix code
 10. Generate diff reports
 
-**Logs**: All output is logged to `test_log/exec_steps_logs.txt`
+**Logs**: All output is logged to `workspace/exec_steps_logs.txt`
 
 ---
 
@@ -309,7 +309,7 @@ make test-all
 ### Subsequent Runs (Schema Already Created)
 
 ```bash
-# Option 1: Run all steps (will clean test_log first)
+# Option 1: Run all steps (will clean workspace first)
 make test-all
 
 # Option 2: Run individual steps
@@ -326,7 +326,7 @@ make review
 # 1. Recreate Neo4j schema (deletes all data)
 python scripts/schema/create_neo4j_schema.py
 
-# 2. Clean test_log directory
+# 2. Clean workspace directory
 make clean-all
 
 # 3. Run test flow
@@ -340,7 +340,7 @@ make test-all
 After running the test flow, you'll have:
 
 ```
-test_log/
+workspace/
 ├── staging/              # Uploaded XML files
 ├── parsed/               # Parsed canonical models (JSON)
 ├── parse_ai/            # AI-enhanced canonical models
