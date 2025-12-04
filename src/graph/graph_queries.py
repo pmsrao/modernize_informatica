@@ -236,9 +236,14 @@ class GraphQueries:
             overview["counts"]["tasks"] = result["count"] if result else 0
             
             # Count Transformations (mappings)
+            # Only count main transformations (mappings), not nested transformations
+            # Mappings have source_component_type = 'mapping' AND have sources or targets
+            # Nested transformations have a 'transformation' property pointing to their parent
             result = session.run("""
                 MATCH (t:Transformation)
-                WHERE t.source_component_type = 'mapping' OR t.source_component_type IS NULL
+                WHERE t.source_component_type = 'mapping'
+                AND t.transformation IS NULL
+                AND (EXISTS((t)-[:HAS_SOURCE]->()) OR EXISTS((t)-[:HAS_TARGET]->()))
                 RETURN count(t) as count
             """).single()
             overview["counts"]["transformations"] = result["count"] if result else 0
@@ -270,45 +275,114 @@ class GraphQueries:
             overview["transformation_type_distribution"] = {record["type"]: record["count"] for record in result}
             
             # Component health metrics
+            # Count both Transformations (mappings) and ReusableTransformations (mapplets)
             # Transformations with code (have HAS_CODE relationship to GeneratedCode)
+            # Only count main transformations (mappings), not nested transformations
+            # Mappings have source_component_type = 'mapping' AND have sources or targets
+            # Nested transformations have a 'transformation' property pointing to their parent
+            
+            # Count mappings with code
             result = session.run("""
-                MATCH (t:Transformation {source_component_type: 'mapping'})-[:HAS_CODE]->(c:GeneratedCode)
+                MATCH (t:Transformation)-[:HAS_CODE]->(c:GeneratedCode)
+                WHERE t.source_component_type = 'mapping'
+                AND t.transformation IS NULL
+                AND (EXISTS((t)-[:HAS_SOURCE]->()) OR EXISTS((t)-[:HAS_TARGET]->()))
                 RETURN count(DISTINCT t) as count
             """).single()
-            with_code = result["count"] if result else 0
+            mappings_with_code = result["count"] if result else 0
             
-            # Total transformations (mappings)
+            # Count mapplets with code (if they have code generated)
+            result = session.run("""
+                MATCH (rt:ReusableTransformation)-[:HAS_CODE]->(c:GeneratedCode)
+                RETURN count(DISTINCT rt) as count
+            """).single()
+            mapplets_with_code = result["count"] if result else 0
+            
+            with_code = mappings_with_code + mapplets_with_code
+            
+            # Total transformations (mappings + mapplets)
+            # Count main transformations that are actual mappings (have sources or targets)
             result = session.run("""
                 MATCH (t:Transformation)
-                WHERE t.source_component_type = 'mapping' OR t.source_component_type IS NULL
+                WHERE t.source_component_type = 'mapping'
+                AND t.transformation IS NULL
+                AND (EXISTS((t)-[:HAS_SOURCE]->()) OR EXISTS((t)-[:HAS_TARGET]->()))
                 RETURN count(t) as count
             """).single()
-            total_transformations = result["count"] if result else 0
+            total_mappings = result["count"] if result else 0
+            
+            # Count total mapplets
+            result = session.run("""
+                MATCH (rt:ReusableTransformation)
+                RETURN count(rt) as count
+            """).single()
+            total_mapplets = result["count"] if result else 0
+            
+            total_transformations = total_mappings + total_mapplets
             
             # Transformations with code that have been validated
             # Check if GeneratedCode has validation metadata (quality_score > 0)
+            # Count both mappings and mapplets
             result = session.run("""
-                MATCH (t:Transformation {source_component_type: 'mapping'})-[:HAS_CODE]->(c:GeneratedCode)
-                WHERE c.quality_score IS NOT NULL AND c.quality_score > 0
+                MATCH (t:Transformation)-[:HAS_CODE]->(c:GeneratedCode)
+                WHERE t.source_component_type = 'mapping'
+                AND t.transformation IS NULL
+                AND (EXISTS((t)-[:HAS_SOURCE]->()) OR EXISTS((t)-[:HAS_TARGET]->()))
+                AND c.quality_score IS NOT NULL AND c.quality_score > 0
                 RETURN count(DISTINCT t) as count
             """).single()
-            validated = result["count"] if result else 0
+            mappings_validated = result["count"] if result else 0
+            
+            result = session.run("""
+                MATCH (rt:ReusableTransformation)-[:HAS_CODE]->(c:GeneratedCode)
+                WHERE c.quality_score IS NOT NULL AND c.quality_score > 0
+                RETURN count(DISTINCT rt) as count
+            """).single()
+            mapplets_validated = result["count"] if result else 0
+            
+            validated = mappings_validated + mapplets_validated
             
             # Transformations with code that have been AI reviewed
+            # Count both mappings and mapplets
             result = session.run("""
-                MATCH (t:Transformation {source_component_type: 'mapping'})-[:HAS_CODE]->(c:GeneratedCode)
-                WHERE c.ai_reviewed = true
+                MATCH (t:Transformation)-[:HAS_CODE]->(c:GeneratedCode)
+                WHERE t.source_component_type = 'mapping'
+                AND t.transformation IS NULL
+                AND (EXISTS((t)-[:HAS_SOURCE]->()) OR EXISTS((t)-[:HAS_TARGET]->()))
+                AND c.ai_reviewed = true
                 RETURN count(DISTINCT t) as count
             """).single()
-            ai_reviewed = result["count"] if result else 0
+            mappings_reviewed = result["count"] if result else 0
+            
+            result = session.run("""
+                MATCH (rt:ReusableTransformation)-[:HAS_CODE]->(c:GeneratedCode)
+                WHERE c.ai_reviewed = true
+                RETURN count(DISTINCT rt) as count
+            """).single()
+            mapplets_reviewed = result["count"] if result else 0
+            
+            ai_reviewed = mappings_reviewed + mapplets_reviewed
             
             # Transformations with code that have been AI fixed
+            # Count both mappings and mapplets
             result = session.run("""
-                MATCH (t:Transformation {source_component_type: 'mapping'})-[:HAS_CODE]->(c:GeneratedCode)
-                WHERE c.ai_fixed = true
+                MATCH (t:Transformation)-[:HAS_CODE]->(c:GeneratedCode)
+                WHERE t.source_component_type = 'mapping'
+                AND t.transformation IS NULL
+                AND (EXISTS((t)-[:HAS_SOURCE]->()) OR EXISTS((t)-[:HAS_TARGET]->()))
+                AND c.ai_fixed = true
                 RETURN count(DISTINCT t) as count
             """).single()
-            ai_fixed = result["count"] if result else 0
+            mappings_fixed = result["count"] if result else 0
+            
+            result = session.run("""
+                MATCH (rt:ReusableTransformation)-[:HAS_CODE]->(c:GeneratedCode)
+                WHERE c.ai_fixed = true
+                RETURN count(DISTINCT rt) as count
+            """).single()
+            mapplets_fixed = result["count"] if result else 0
+            
+            ai_fixed = mappings_fixed + mapplets_fixed
             
             # Needs review: transformations with code but not validated, plus transformations without code
             needs_review = max(0, total_transformations - validated)

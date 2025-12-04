@@ -9,7 +9,7 @@ Files that don't need AI review should still be copied to `generated_ai` so that
 the directory contains all generated code.
 
 This script respects the naming convention used by the review process:
-- Python files get `_pyspark.py` suffix
+- Python files use `.py` extension (no suffix)
 - DLT files get `_dlt.py` suffix  
 - SQL files get `_sql.sql` suffix
 
@@ -94,7 +94,7 @@ def get_output_filename(filename: str, code_type: str) -> str:
             break
     
     if code_type == "python":
-        return f"{base_name}_pyspark.py"
+        return f"{base_name}.py"
     elif code_type == "dlt":
         return f"{base_name}_dlt.py"
     elif code_type == "sql":

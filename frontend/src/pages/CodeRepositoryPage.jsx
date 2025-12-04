@@ -130,7 +130,7 @@ export default function CodeRepositoryPage() {
 
   const renderTree = (tree, path = '', level = 0) => {
     const items = [];
-    const indent = level * 12;
+    const indent = level * 8;
     
     Object.keys(tree).forEach(key => {
       const currentPath = path ? `${path}/${key}` : key;
@@ -237,7 +237,7 @@ export default function CodeRepositoryPage() {
               )}
             </div>
             {isExpanded && hasChildren && (
-              <div style={{ marginLeft: '12px', marginTop: '4px' }}>
+              <div style={{ marginLeft: '8px', marginTop: '4px' }}>
                 {renderTree(value, currentPath, level + 1)}
               </div>
             )}

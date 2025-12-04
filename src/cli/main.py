@@ -1,6 +1,7 @@
 """Main CLI Entry Point."""
 import argparse
 import sys
+import os
 import json
 from pathlib import Path
 from typing import Optional
@@ -45,6 +46,31 @@ def create_parser() -> argparse.ArgumentParser:
         "--config",
         type=str,
         help="Path to configuration file"
+    )
+    
+    parser.add_argument(
+        "--api-url",
+        type=str,
+        help="API URL for HTTP mode (default: direct mode)"
+    )
+    
+    parser.add_argument(
+        "--workspace-dir",
+        type=str,
+        default="workspace",
+        help="Workspace directory for operations"
+    )
+    
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results as JSON"
+    )
+    
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Verbose logging"
     )
     
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
@@ -100,6 +126,46 @@ def create_parser() -> argparse.ArgumentParser:
     config_subparsers = config_parser.add_subparsers(dest="config_command", help="Config subcommand")
     config_subparsers.add_parser("show", help="Show current configuration")
     config_subparsers.add_parser("validate", help="Validate configuration")
+    
+    # Upload command
+    upload_parser = subparsers.add_parser("upload", help="Upload Informatica XML files")
+    upload_parser.add_argument("path", help="File or directory path to upload")
+    upload_parser.add_argument("--recursive", action="store_true", help="Recursively upload files from directory")
+    upload_parser.add_argument("--session-id", type=str, help="Session ID to group uploads")
+    
+    # Parse command
+    parse_parser = subparsers.add_parser("parse", help="Parse Informatica XML files")
+    parse_parser.add_argument("target", nargs="?", help="File ID, file path, directory, or use --session-id")
+    parse_parser.add_argument("--type", choices=["mapping", "workflow", "session", "worklet", "mapplet", "all"],
+                             help="File type (auto-detected if not specified)")
+    parse_parser.add_argument("--session-id", type=str, help="Session ID from upload")
+    parse_parser.add_argument("--enhance", action="store_true", help="Enhance with AI")
+    parse_parser.add_argument("--recursive", action="store_true", help="Recursively parse directory")
+    parse_parser.add_argument("--output", type=str, help="Output directory")
+    
+    # Enhance command
+    enhance_parser = subparsers.add_parser("enhance", help="Enhance canonical model with AI")
+    enhance_parser.add_argument("mapping_name", help="Mapping name or ID")
+    enhance_parser.add_argument("--output", type=str, help="Output directory")
+    
+    # Generate code command
+    generate_parser = subparsers.add_parser("generate-code", help="Generate code from canonical model")
+    generate_parser.add_argument("mapping_name", help="Mapping name or ID")
+    generate_parser.add_argument("--type", choices=["pyspark", "dlt", "sql", "orchestration", "all"],
+                                default="pyspark", help="Code type to generate")
+    generate_parser.add_argument("--output", type=str, help="Output directory")
+    generate_parser.add_argument("--review", action="store_true", help="Review generated code")
+    
+    # Review command
+    review_parser = subparsers.add_parser("review", help="Review generated code with AI")
+    review_parser.add_argument("path", help="File path or directory")
+    review_parser.add_argument("--fix", action="store_true", help="Auto-fix issues")
+    review_parser.add_argument("--output", type=str, help="Output directory")
+    
+    # Fix command
+    fix_parser = subparsers.add_parser("fix", help="Fix code issues")
+    fix_parser.add_argument("path", help="File path or directory")
+    fix_parser.add_argument("--output", type=str, help="Output directory")
     
     return parser
 
@@ -402,6 +468,153 @@ def cmd_config_validate(config: Config, args: argparse.Namespace):
         sys.exit(1)
 
 
+def cmd_upload(config: Config, args: argparse.Namespace, client: APIClient):
+    """Execute upload command."""
+    try:
+        path = Path(args.path)
+        if not path.exists():
+            print_error(f"Path not found: {args.path}")
+            sys.exit(1)
+        
+        if path.is_file():
+            print_info(f"Uploading file: {args.path}")
+            result = client.upload_file(str(path), args.session_id)
+            if args.json:
+                print(json.dumps(result, indent=2))
+            else:
+                print_success(f"Uploaded: {result['filename']} (ID: {result['file_id']})")
+                if result.get('session_id'):
+                    print_info(f"Session ID: {result['session_id']}")
+        else:
+            print_info(f"Uploading directory: {args.path}")
+            result = client.upload_directory(str(path), args.recursive, args.session_id)
+            if args.json:
+                print(json.dumps(result, indent=2))
+            else:
+                print_success(f"Uploaded {result['count']} file(s)")
+                print_info(f"Session ID: {result['session_id']}")
+                print_info(f"File IDs: {', '.join(result['file_ids'][:5])}{'...' if len(result['file_ids']) > 5 else ''}")
+    except Exception as e:
+        print_error(f"Upload failed: {str(e)}")
+        sys.exit(1)
+
+
+def cmd_parse(config: Config, args: argparse.Namespace, client: APIClient):
+    """Execute parse command."""
+    try:
+        if args.session_id:
+            print_info(f"Parsing session: {args.session_id}")
+            result = client.parse_session(args.session_id, args.type, args.enhance)
+        elif args.target:
+            path = Path(args.target)
+            if path.is_file():
+                print_info(f"Parsing file: {args.target}")
+                result = client.parse_file(args.type, file_path=str(path), enhance=args.enhance)
+            elif path.is_dir():
+                print_info(f"Parsing directory: {args.target}")
+                result = client.parse_directory(str(path), args.type, args.recursive, args.enhance)
+            else:
+                # Assume it's a file_id
+                print_info(f"Parsing file ID: {args.target}")
+                result = client.parse_file(args.type, file_id=args.target, enhance=args.enhance)
+        else:
+            print_error("Must provide target (file, directory, or --session-id)")
+            sys.exit(1)
+        
+        if args.json:
+            print(json.dumps(result, indent=2, default=str))
+        else:
+            if isinstance(result, dict) and "parsed" in result:
+                print_success(f"Parsed {len(result['parsed'])} file(s)")
+                if result.get('failed'):
+                    print_warning(f"Failed: {len(result['failed'])} file(s)")
+            else:
+                print_success(f"Parsed: {result.get('mapping_name', 'unknown')}")
+    except Exception as e:
+        print_error(f"Parse failed: {str(e)}")
+        sys.exit(1)
+
+
+def cmd_enhance(config: Config, args: argparse.Namespace, client: APIClient):
+    """Execute enhance command."""
+    try:
+        print_info(f"Enhancing model: {args.mapping_name}")
+        result = client.enhance_model(args.mapping_name)
+        if args.json:
+            print(json.dumps(result, indent=2, default=str))
+        else:
+            if result.get('enhanced'):
+                print_success(f"Enhanced: {args.mapping_name}")
+            else:
+                print_warning(f"Enhancement skipped: {args.mapping_name}")
+    except Exception as e:
+        print_error(f"Enhance failed: {str(e)}")
+        sys.exit(1)
+
+
+def cmd_generate_code(config: Config, args: argparse.Namespace, client: APIClient):
+    """Execute generate-code command."""
+    try:
+        print_info(f"Generating {args.type} code for: {args.mapping_name}")
+        result = client.generate_code(args.type, args.mapping_name, args.output, args.review)
+        if args.json:
+            print(json.dumps(result, indent=2, default=str))
+        else:
+            for code_type, code_result in result.items():
+                print_success(f"Generated {code_type}: {code_result['file']}")
+                if code_result.get('quality_score'):
+                    print_info(f"  Quality score: {code_result['quality_score']}")
+    except Exception as e:
+        print_error(f"Code generation failed: {str(e)}")
+        sys.exit(1)
+
+
+def cmd_review(config: Config, args: argparse.Namespace, client: APIClient):
+    """Execute review command."""
+    try:
+        path = Path(args.path)
+        if path.is_file():
+            print_info(f"Reviewing: {args.path}")
+            result = client.review_code(str(path), args.fix)
+            if args.json:
+                print(json.dumps(result, indent=2, default=str))
+            else:
+                review = result.get('review', {})
+                print_success(f"Reviewed: {args.path}")
+                if review.get('needs_fix'):
+                    print_warning(f"Issues found: {len(review.get('issues', []))}")
+                    if result.get('fixed'):
+                        print_success(f"Fixed code saved: {result['fixed_file']}")
+        else:
+            print_error("Review command currently supports single files only")
+            sys.exit(1)
+    except Exception as e:
+        print_error(f"Review failed: {str(e)}")
+        sys.exit(1)
+
+
+def cmd_fix(config: Config, args: argparse.Namespace, client: APIClient):
+    """Execute fix command."""
+    try:
+        path = Path(args.path)
+        if path.is_file():
+            print_info(f"Fixing: {args.path}")
+            result = client.fix_code(str(path), args.output)
+            if args.json:
+                print(json.dumps(result, indent=2, default=str))
+            else:
+                if result.get('fixed'):
+                    print_success(f"Fixed code saved: {result['fixed_file']}")
+                else:
+                    print_warning("No fixes applied")
+        else:
+            print_error("Fix command currently supports single files only")
+            sys.exit(1)
+    except Exception as e:
+        print_error(f"Fix failed: {str(e)}")
+        sys.exit(1)
+
+
 def main():
     """Main CLI entry point."""
     parser = create_parser()
@@ -419,9 +632,26 @@ def main():
         print_error(f"Configuration error: {str(e)}")
         sys.exit(1)
     
+    # Initialize API client
+    workspace_dir = getattr(args, 'workspace_dir', 'workspace')
+    api_url = getattr(args, 'api_url', None) or os.getenv('API_URL')
+    client = APIClient(api_url=api_url, workspace_dir=workspace_dir)
+    
     # Route to command handler
     try:
-        if args.command == "assess":
+        if args.command == "upload":
+            cmd_upload(config, args, client)
+        elif args.command == "parse":
+            cmd_parse(config, args, client)
+        elif args.command == "enhance":
+            cmd_enhance(config, args, client)
+        elif args.command == "generate-code":
+            cmd_generate_code(config, args, client)
+        elif args.command == "review":
+            cmd_review(config, args, client)
+        elif args.command == "fix":
+            cmd_fix(config, args, client)
+        elif args.command == "assess":
             if args.assess_command == "profile":
                 cmd_assess_profile(config, args)
             elif args.assess_command == "analyze":

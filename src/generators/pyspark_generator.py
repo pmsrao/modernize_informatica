@@ -269,6 +269,7 @@ class PySparkGenerator:
         # Find source DataFrames from connectors
         df1_name = None
         df2_name = None
+        join_conditions_from_connectors = []
         
         if model:
             connectors = model.get("connectors", [])
@@ -279,6 +280,42 @@ class PySparkGenerator:
                 # Use first two input transformations as join sources
                 df1_name = input_connectors[0].get("from_transformation", "")
                 df2_name = input_connectors[1].get("from_transformation", "")
+                
+                # Extract join conditions from connectors
+                # Look for matching ports between the two input connectors
+                port1 = input_connectors[0].get("from_port", "")
+                port2 = input_connectors[1].get("from_port", "")
+                to_port1 = input_connectors[0].get("to_port", "")
+                to_port2 = input_connectors[1].get("to_port", "")
+                
+                # If both connectors have the same to_port, that's the join key
+                # Use from_port if available, otherwise use to_port
+                if to_port1 and to_port1 == to_port2:
+                    join_key = to_port1
+                    left_port = port1 if port1 else join_key
+                    right_port = port2 if port2 else join_key
+                    join_conditions_from_connectors.append({
+                        "left_port": left_port,
+                        "right_port": right_port
+                    })
+                # If ports match, use them
+                elif port1 and port2 and port1 == port2:
+                    join_conditions_from_connectors.append({
+                        "left_port": port1,
+                        "right_port": port2
+                    })
+                # Otherwise, try to use available ports
+                elif port1 and port2:
+                    join_conditions_from_connectors.append({
+                        "left_port": port1,
+                        "right_port": port2
+                    })
+                elif to_port1 and to_port2:
+                    # Use to_ports as fallback
+                    join_conditions_from_connectors.append({
+                        "left_port": to_port1,
+                        "right_port": to_port2
+                    })
             elif len(input_connectors) == 1:
                 # Only one input - use it as df1, need to infer df2
                 df1_name = input_connectors[0].get("from_transformation", "")
@@ -305,12 +342,23 @@ class PySparkGenerator:
         use_broadcast = trans.get("_optimization_hint") == "broadcast_join" or \
                        trans.get("right_table_size", "unknown") == "small"
         
-        if conditions:
+        # Use conditions from transformation if available, otherwise use connectors
+        if conditions and any(c.get("left_port") and c.get("right_port") for c in conditions):
+            # Use transformation conditions if they have valid ports
             join_condition = " && ".join([
                 f"{df1_var}['{c.get('left_port', '')}'] == {df2_var}['{c.get('right_port', '')}']"
-                for c in conditions
+                for c in conditions if c.get("left_port") and c.get("right_port")
             ])
-            
+        elif join_conditions_from_connectors:
+            # Use conditions extracted from connectors
+            join_condition = " && ".join([
+                f"{df1_var}['{c.get('left_port', '')}'] == {df2_var}['{c.get('right_port', '')}']"
+                for c in join_conditions_from_connectors if c.get("left_port") and c.get("right_port")
+            ])
+        else:
+            join_condition = None
+        
+        if join_condition:
             if use_broadcast:
                 lines.append(f"# Using broadcast join for small right table (optimization)")
                 lines.append(f"{df2_var}_broadcast = F.broadcast({df2_var})")
@@ -320,6 +368,7 @@ class PySparkGenerator:
                 lines.append(f"# Performance hint: Consider broadcast join if {df2_var} is small (< 100MB)")
         else:
             lines.append(f"# Join conditions not fully specified for {trans_name}")
+            lines.append(f"# TODO: Extract join condition from connectors or transformation ports")
             lines.append(f"# df_{trans_name} = {df1_var}.join({df2_var}, join_condition, '{join_type}')")
         
         # Update main df to point to joiner result
@@ -671,6 +720,102 @@ class PySparkGenerator:
                 lines.append(f"df = df.select(*[c for c in df.columns if c not in {[p for p in output_port_mappings.keys()]}], "
                            f"{', '.join(output_cols)})")
         
+        return lines
+    
+    def generate_mapplet_function(self, mapplet_data: Dict[str, Any]) -> List[str]:
+        """Generate standalone function for a mapplet (reusable transformation).
+        
+        Args:
+            mapplet_data: Mapplet canonical model dictionary
+            
+        Returns:
+            List of code lines for mapplet function
+        """
+        lines = []
+        mapplet_name = mapplet_data.get("name", "unknown_mapplet")
+        func_name = f"mapplet_{mapplet_name.lower().replace(' ', '_').replace('-', '_')}"
+        
+        # Function signature with input ports as parameters
+        input_ports = mapplet_data.get("input_ports", [])
+        if input_ports:
+            # Create DataFrame from input ports
+            port_params = [f"{port.get('name', '')}: str" for port in input_ports]
+            lines.append(f"def {func_name}(df, **kwargs):")
+        else:
+            lines.append(f"def {func_name}(df):")
+        
+        lines.append(f'    """Mapplet: {mapplet_name}')
+        lines.append(f'    ')
+        if input_ports:
+            lines.append(f'    Input ports: {", ".join([p.get("name", "") for p in input_ports])}')
+        output_ports = mapplet_data.get("output_ports", [])
+        if output_ports:
+            lines.append(f'    Output ports: {", ".join([p.get("name", "") for p in output_ports])}')
+        lines.append(f'    """')
+        lines.append("")
+        
+        # Map input ports if needed
+        if input_ports:
+            lines.append("    # Map input ports from DataFrame")
+            for port in input_ports:
+                port_name = port.get("name", "")
+                if port_name:
+                    lines.append(f"    # Input port: {port_name}")
+        
+        # Generate transformations within mapplet
+        transformations = mapplet_data.get("transformations", [])
+        for trans in transformations:
+            trans_type = trans.get("type", "")
+            trans_name = trans.get("name", "")
+            
+            lines.append(f"    # Transformation: {trans_name} ({trans_type})")
+            
+            if trans_type == "EXPRESSION":
+                trans_lines = self._generate_expression(trans)
+                # Indent all lines
+                lines.extend([f"    {line}" if line.strip() else "" for line in trans_lines])
+            elif trans_type == "LOOKUP":
+                trans_lines = self._generate_lookup(trans)
+                lines.extend([f"    {line}" if line.strip() else "" for line in trans_lines])
+            elif trans_type == "JOINER":
+                trans_lines = self._generate_joiner(trans, mapplet_data)
+                lines.extend([f"    {line}" if line.strip() else "" for line in trans_lines])
+            elif trans_type == "AGGREGATOR":
+                trans_lines = self._generate_aggregator(trans)
+                lines.extend([f"    {line}" if line.strip() else "" for line in trans_lines])
+            elif trans_type == "FILTER":
+                trans_lines = self._generate_filter(trans)
+                lines.extend([f"    {line}" if line.strip() else "" for line in trans_lines])
+            elif trans_type == "ROUTER":
+                trans_lines = self._generate_router(trans)
+                lines.extend([f"    {line}" if line.strip() else "" for line in trans_lines])
+            elif trans_type == "SORTER":
+                trans_lines = self._generate_sorter(trans)
+                lines.extend([f"    {line}" if line.strip() else "" for line in trans_lines])
+            elif trans_type == "RANK":
+                trans_lines = self._generate_rank(trans)
+                lines.extend([f"    {line}" if line.strip() else "" for line in trans_lines])
+            elif trans_type == "UNION":
+                trans_lines = self._generate_union(trans)
+                lines.extend([f"    {line}" if line.strip() else "" for line in trans_lines])
+            elif trans_type == "UPDATE_STRATEGY":
+                trans_lines = self._generate_update_strategy(trans)
+                lines.extend([f"    {line}" if line.strip() else "" for line in trans_lines])
+            
+            lines.append("")
+        
+        # Return DataFrame with output ports
+        if output_ports:
+            lines.append("    # Return DataFrame with output ports")
+            output_cols = [f"F.col('{port.get('name', '')}')" for port in output_ports if port.get("name")]
+            if output_cols:
+                lines.append(f"    return df.select({', '.join(output_cols)})")
+            else:
+                lines.append("    return df")
+        else:
+            lines.append("    return df")
+        
+        lines.append("")
         return lines
     
     def _generate_reusable_transformation_function(self, trans: Dict[str, Any], reusable_name: str) -> List[str]:

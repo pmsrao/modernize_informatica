@@ -216,9 +216,16 @@ class GraphStore:
             transformation_props["join_count"] = complexity_metrics.get("join_count")
             transformation_props["aggregation_count"] = complexity_metrics.get("aggregation_count")
         
+        # Ensure source_component_type is always set for main transformations (mappings)
+        # If not provided, default to 'mapping'
+        if not transformation_props.get("source_component_type"):
+            transformation_props["source_component_type"] = "mapping"
+        
         tx.run("""
             MERGE (t:Transformation {name: $name})
             SET t += $props
+            // Ensure source_component_type is always set for main transformations
+            SET t.source_component_type = COALESCE(t.source_component_type, 'mapping')
         """, name=transformation_name, props=transformation_props)
         
         # 2. Create Source nodes
@@ -344,9 +351,14 @@ class GraphStore:
                         elif isinstance(value, (dict, list)):
                             trans_props[f"{key}_json"] = json.dumps(value)
             
+            # Nested transformations should NOT have source_component_type
+            # They are part of a mapping, not standalone components
+            # Only set source_component_type for the main transformation (mapping)
             tx.run("""
                 MERGE (t:Transformation {name: $name, transformation: $transformation})
                 SET t += $props
+                // Ensure nested transformations don't have source_component_type
+                REMOVE t.source_component_type
                 WITH t
                 MATCH (main:Transformation {name: $transformation})
                 MERGE (main)-[:HAS_TRANSFORMATION]->(t)
@@ -1645,24 +1657,30 @@ class GraphStore:
             return None
     
     def save_code_metadata(self, mapping_name: str, code_type: str, file_path: str,
-                          language: str, quality_score: float = None) -> str:
+                          language: str, quality_score: float = None, 
+                          component_type: str = "mapping") -> str:
         """Save generated code metadata to Neo4j.
         
         Args:
-            mapping_name: Name of the mapping
+            mapping_name: Name of the mapping or mapplet
             code_type: Type of code (pyspark, dlt, sql)
             file_path: Path to the generated code file
             language: Programming language (python, sql)
             quality_score: Code quality score (optional)
+            component_type: Type of component ('mapping' or 'mapplet')
             
         Returns:
             File path
         """
-        logger.info(f"Saving code metadata for mapping {mapping_name}: {code_type}")
+        logger.info(f"Saving code metadata for {component_type} {mapping_name}: {code_type}")
         
         with self.driver.session() as session:
-            session.execute_write(self._create_code_metadata_tx,
-                                 mapping_name, code_type, file_path, language, quality_score)
+            if component_type == "mapplet":
+                session.execute_write(self._create_mapplet_code_metadata_tx,
+                                     mapping_name, code_type, file_path, language, quality_score)
+            else:
+                session.execute_write(self._create_code_metadata_tx,
+                                     mapping_name, code_type, file_path, language, quality_score)
         
         logger.info(f"Successfully saved code metadata: {file_path}")
         return file_path
@@ -1696,16 +1714,75 @@ class GraphStore:
             "file_path": file_path,
             "language": language,
             "quality_score": quality_score,
-            "generated_at": datetime.now().isoformat()
+            "generated_at": datetime.now().isoformat(),
+            # Initialize AI review fields
+            "ai_reviewed": False,
+            "ai_review_score": None,
+            "ai_fixed": False,
+            "ai_reviewed_at": None,
+            "ai_fixed_at": None
         }
         
-        tx.run("""
+        # Create or update GeneratedCode node
+        result = tx.run("""
             MERGE (c:GeneratedCode {file_path: $file_path})
             SET c += $props
             WITH c
-            MATCH (t:Transformation {name: $mapping_name, source_component_type: 'mapping'})
-            MERGE (t)-[:HAS_CODE]->(c)
+            // Match transformation by name, allowing source_component_type to be 'mapping' or NULL
+            MATCH (t:Transformation {name: $mapping_name})
+            WHERE t.source_component_type = 'mapping' OR t.source_component_type IS NULL
+            MERGE (t)-[r:HAS_CODE]->(c)
+            RETURN t.name as transformation_name, r
         """, file_path=file_path, mapping_name=mapping_name, props=code_props)
+        
+        # Check if relationship was created
+        match_result = result.single()
+        if not match_result:
+            logger.warning(f"Failed to create HAS_CODE relationship for mapping '{mapping_name}' and file '{file_path}'. "
+                         f"Transformation may not exist or may have different source_component_type.")
+        else:
+            logger.debug(f"Created HAS_CODE relationship: {match_result['transformation_name']} -> {file_path}")
+    
+    @staticmethod
+    def _create_mapplet_code_metadata_tx(tx, mapplet_name: str, code_type: str, file_path: str,
+                                        language: str, quality_score: float = None):
+        """Transaction function to create code metadata and link to mapplet (ReusableTransformation)."""
+        from datetime import datetime
+        
+        code_props = {
+            "mapping_name": mapplet_name,  # Keep for backward compatibility
+            "mapplet_name": mapplet_name,
+            "code_type": code_type,
+            "file_path": file_path,
+            "language": language,
+            "quality_score": quality_score,
+            "generated_at": datetime.now().isoformat(),
+            # Initialize AI review fields
+            "ai_reviewed": False,
+            "ai_review_score": None,
+            "ai_fixed": False,
+            "ai_reviewed_at": None,
+            "ai_fixed_at": None
+        }
+        
+        # Create or update GeneratedCode node
+        result = tx.run("""
+            MERGE (c:GeneratedCode {file_path: $file_path})
+            SET c += $props
+            WITH c
+            // Match ReusableTransformation by name
+            MATCH (rt:ReusableTransformation {name: $mapplet_name})
+            MERGE (rt)-[r:HAS_CODE]->(c)
+            RETURN rt.name as reusable_transformation_name, r
+        """, file_path=file_path, mapplet_name=mapplet_name, props=code_props)
+        
+        # Check if relationship was created
+        match_result = result.single()
+        if not match_result:
+            logger.warning(f"Failed to create HAS_CODE relationship for mapplet '{mapplet_name}' and file '{file_path}'. "
+                         f"ReusableTransformation may not exist.")
+        else:
+            logger.debug(f"Created HAS_CODE relationship: {match_result['reusable_transformation_name']} -> {file_path}")
     
     @staticmethod
     def _update_ai_review_status_tx(tx, file_path: str, ai_review_score: float = None,

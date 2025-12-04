@@ -110,7 +110,7 @@ export default function SourceRepoViewPage() {
 
   const renderTree = (tree, path = '', level = 0) => {
     const items = [];
-    const indent = level * 12;
+    const indent = level * 8;
     
     // Filter by search term and file type
     const filteredKeys = Object.keys(tree).filter(key => {
@@ -235,7 +235,7 @@ export default function SourceRepoViewPage() {
               )}
             </div>
             {isExpanded && hasChildren && (
-              <div style={{ marginLeft: '12px', marginTop: '4px' }}>
+              <div style={{ marginLeft: '8px', marginTop: '4px' }}>
                 {renderTree(value, currentPath, level + 1)}
               </div>
             )}

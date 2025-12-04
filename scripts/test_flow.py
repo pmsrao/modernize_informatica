@@ -1388,7 +1388,7 @@ class TestFlow:
                         code = generator.generate(canonical_model)
                         
                         # Generate descriptive filename
-                        code_file = os.path.join(transformation_dir, f"{transformation_name_clean}_pyspark.py")
+                        code_file = os.path.join(transformation_dir, f"{transformation_name_clean}.py")
                         
                         with open(code_file, 'w') as f:
                             f.write(code)
@@ -1471,7 +1471,10 @@ class TestFlow:
         # Generate shared/reusable code
         if all_mappings:
             print(f"\n📦 Generating shared/reusable code...")
-            self._generate_shared_code(all_transformations, shared_dir, results)
+            self._generate_shared_code(all_transformations, shared_dir, results,
+                                     version_store=version_store,
+                                     graph_store=graph_store,
+                                     generators=generators)
         
         # Save summary
         summary_file = os.path.join(output_dir, "generation_summary.json")
@@ -1572,7 +1575,7 @@ class TestFlow:
                         
                         # Generate descriptive filename
                         if code_type == "pyspark":
-                            code_file = os.path.join(mapping_dir, f"{mapping_name_clean}_pyspark.py")
+                            code_file = os.path.join(mapping_dir, f"{mapping_name_clean}.py")
                         elif code_type == "dlt":
                             code_file = os.path.join(mapping_dir, f"{mapping_name_clean}_dlt.py")
                         else:
@@ -1922,24 +1925,126 @@ class TestFlow:
             with open(dag_path, 'w') as f:
                 json.dump(dag_data, f, indent=2)
     
-    def _generate_shared_code(self, all_transformations: Dict[str, List], shared_dir: str, results: Dict[str, Any]):
-        """Generate shared/reusable code from common patterns.
+    def _generate_shared_code(self, all_transformations: Dict[str, List], shared_dir: str, results: Dict[str, Any],
+                              version_store: Optional[VersionStore] = None,
+                              graph_store: Optional[GraphStore] = None,
+                              generators: Optional[Dict[str, Any]] = None):
+        """Generate shared/reusable code from common patterns and mapplets.
         
         Args:
             all_transformations: Dict of transformation type to list of transformations
             shared_dir: Shared code directory
             results: Results dictionary to update
+            version_store: Optional version store to load mapplets
+            graph_store: Optional graph store to save code metadata
+            generators: Optional code generators dict
         """
-        # Create shared utilities
-        utils_path = os.path.join(shared_dir, "common_utils.py")
+        # Create shared utilities file for mapplets
+        utils_path = os.path.join(shared_dir, "common_utils_pyspark.py")
+        mapplet_functions = []
+        
+        # Generate mapplet functions if version_store and generators are available
+        if version_store and generators and "pyspark" in generators:
+            pyspark_generator = generators["pyspark"]
+            
+            # Load all mapplets from version store or graph
+            mapplet_names = []
+            if graph_store:
+                try:
+                    with graph_store.driver.session() as session:
+                        result = session.run("""
+                            MATCH (rt:ReusableTransformation)
+                            RETURN rt.name as name
+                            ORDER BY rt.name
+                        """)
+                        mapplet_names = [record["name"] for record in result]
+                except Exception as e:
+                    logger.warning(f"Failed to load mapplets from graph: {e}")
+            
+            # Also try to find mapplets from version store
+            if not mapplet_names:
+                # Try to find mapplet files in parsed directory
+                parsed_dir = os.path.join(os.path.dirname(shared_dir), "parsed")
+                if os.path.exists(parsed_dir):
+                    mapplet_files = glob.glob(os.path.join(parsed_dir, "*_mapplet.json"))
+                    mapplet_names = [os.path.basename(f).replace("_mapplet.json", "") for f in mapplet_files]
+            
+            # Generate function for each mapplet
+            for mapplet_name in mapplet_names:
+                try:
+                    # Try to load from version store
+                    mapplet_data = version_store.load(mapplet_name)
+                    if not mapplet_data:
+                        # Try loading from file
+                        parsed_dir = os.path.join(os.path.dirname(shared_dir), "parsed")
+                        mapplet_file = os.path.join(parsed_dir, f"{mapplet_name}_mapplet.json")
+                        if os.path.exists(mapplet_file):
+                            with open(mapplet_file, 'r') as f:
+                                mapplet_data = json.load(f)
+                    
+                    if mapplet_data:
+                        # Generate function code
+                        function_lines = pyspark_generator.generate_mapplet_function(mapplet_data)
+                        mapplet_functions.extend(function_lines)
+                        print(f"   ✅ Generated function for mapplet: {mapplet_name}")
+                except Exception as e:
+                    logger.warning(f"Failed to generate function for mapplet {mapplet_name}: {e}")
+                    print(f"   ⚠️  Failed to generate function for mapplet {mapplet_name}: {e}")
+        
+        # Write shared utilities file
         with open(utils_path, 'w') as f:
+            f.write('"""Common utilities and reusable functions (mapplets)."""\n')
+            f.write('from pyspark.sql import functions as F\n')
+            f.write('from pyspark.sql.types import *\n\n')
+            f.write('# Mapplet functions (reusable transformations)\n')
+            f.write('# This file contains reusable mapplet functions extracted from Informatica mapplets\n\n')
+            
+            if mapplet_functions:
+                f.write('\n'.join(mapplet_functions))
+            else:
+                f.write('# No mapplets found or mapplet code generation not available\n')
+        
+        results["shared_code"].append({"file": utils_path, "type": "mapplets"})
+        
+        # Save code metadata for mapplets if graph_store is available
+        if graph_store and mapplet_functions:
+            try:
+                project_root = Path(__file__).parent.parent
+                abs_path = os.path.abspath(utils_path)
+                try:
+                    rel_path = os.path.relpath(abs_path, project_root)
+                except ValueError:
+                    rel_path = abs_path
+                
+                # Save individual mapplet metadata
+                # Each mapplet gets its own GeneratedCode node linked to the shared file
+                for mapplet_name in mapplet_names:
+                    try:
+                        graph_store.save_code_metadata(
+                            mapping_name=mapplet_name,
+                            code_type="pyspark",
+                            file_path=rel_path,  # Same file contains all mapplets
+                            language="python",
+                            component_type="mapplet"
+                        )
+                        print(f"   💾 Saved code metadata for mapplet: {mapplet_name}")
+                    except Exception as e:
+                        logger.warning(f"Failed to save code metadata for mapplet {mapplet_name}: {e}")
+                        print(f"   ⚠️  Failed to save code metadata for mapplet {mapplet_name}: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to save mapplet code metadata: {e}")
+        
+        # Create legacy common_utils.py (empty template for backward compatibility)
+        legacy_utils_path = os.path.join(shared_dir, "common_utils.py")
+        with open(legacy_utils_path, 'w') as f:
             f.write('"""Common utilities and reusable functions."""\n')
             f.write('from pyspark.sql import functions as F\n')
             f.write('from pyspark.sql.types import *\n\n')
             f.write('# Common transformation patterns\n')
-            f.write('# This file contains reusable functions extracted from common patterns\n\n')
+            f.write('# This file contains reusable functions extracted from common patterns\n')
+            f.write('# Mapplet functions are now in common_utils_pyspark.py\n\n')
         
-        results["shared_code"].append({"file": utils_path, "type": "utilities"})
+        results["shared_code"].append({"file": legacy_utils_path, "type": "utilities"})
         
         # Create config directory
         config_dir = os.path.join(shared_dir, "config")
@@ -2146,7 +2251,7 @@ class TestFlow:
                         code = generator.generate(canonical_model)
                         
                         # Generate descriptive filename
-                        code_file = os.path.join(mapping_dir, f"{mapping_name_clean}_pyspark.py")
+                        code_file = os.path.join(mapping_dir, f"{mapping_name_clean}.py")
                         
                         with open(code_file, 'w') as f:
                             f.write(code)
@@ -2188,7 +2293,10 @@ class TestFlow:
         
         # Generate shared code
         print(f"\n📦 Generating shared/reusable code...")
-        self._generate_shared_code({}, shared_dir, results)
+        self._generate_shared_code({}, shared_dir, results,
+                                 version_store=version_store,
+                                 graph_store=None,  # Not available in file-based flow
+                                 generators=generators)
         
         # Save summary
         summary_file = os.path.join(output_dir, "generation_summary.json")
@@ -2322,7 +2430,7 @@ class TestFlow:
                 
                 # Determine correct filename based on detected code type
                 if actual_code_type == "python":
-                    output_filename = f"{base_name}_pyspark.py"
+                    output_filename = f"{base_name}.py"
                 elif actual_code_type == "dlt":
                     output_filename = f"{base_name}_dlt.py"
                 elif actual_code_type == "sql":
@@ -2353,7 +2461,7 @@ class TestFlow:
                                     break
                             
                             if actual_code_type_after_fix == "python":
-                                output_filename = f"{base_name_after_fix}_pyspark.py"
+                                output_filename = f"{base_name_after_fix}.py"
                             elif actual_code_type_after_fix == "dlt":
                                 output_filename = f"{base_name_after_fix}_dlt.py"
                             else:
