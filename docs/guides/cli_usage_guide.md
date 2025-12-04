@@ -23,15 +23,32 @@ The main CLI tool (`informatica-modernize`) provides high-level commands for ass
 
 The CLI is available as a Python module. Run commands from the project root:
 
+**Method 1: Use wrapper script (Easiest)**
 ```bash
+./scripts/imod <command> [options]
+```
+
+**Method 2: Set PYTHONPATH (Recommended for shell sessions)**
+```bash
+export PYTHONPATH="${PYTHONPATH}:$(pwd):$(pwd)/src"
 python -m cli.main <command> [options]
 ```
 
-Or create an alias:
-
+**Method 3: Use PYTHONPATH inline**
 ```bash
-alias informatica-modernize="python -m cli.main"
+PYTHONPATH="$(pwd)/src:$PYTHONPATH" python -m cli.main <command> [options]
 ```
+
+**Method 4: Create an alias**
+```bash
+alias informatica-modernize="PYTHONPATH=\"\$(pwd)/src:\$PYTHONPATH\" python -m cli.main"
+# Or use the wrapper script
+alias informatica-modernize="./scripts/imod"
+# Or create a shorter alias
+alias imod="./scripts/imod"
+```
+
+**Note**: The CLI module is located in `src/cli/`, so `src` must be in your `PYTHONPATH` for the module to be found. The wrapper script (`scripts/imod`) automatically sets the PYTHONPATH for you.
 
 ### Commands Overview
 

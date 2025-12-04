@@ -1,0 +1,9 @@
+#!/bin/bash
+# Wrapper script for informatica-modernize CLI
+# Usage: ./scripts/imod <command> [options]
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+export PYTHONPATH="${PYTHONPATH}:${PROJECT_ROOT}:${PROJECT_ROOT}/src"
+python -m cli.main "$@"

@@ -19,6 +19,7 @@ from cli.utils import (
     ProgressIndicator, format_output, print_success, print_error, 
     print_warning, print_info
 )
+from cli.client import APIClient
 from graph.graph_store import GraphStore
 from assessment.profiler import Profiler
 from assessment.analyzer import Analyzer
