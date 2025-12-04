@@ -37,6 +37,12 @@ alias informatica-modernize="python -m cli.main"
 
 ```
 informatica-modernize
+├── upload          # Upload Informatica XML files
+├── parse           # Parse XML files to canonical models
+├── enhance         # Enhance canonical models with AI
+├── generate-code   # Generate code from canonical models
+├── review          # Review generated code with AI
+├── fix             # Fix code issues
 ├── assess          # Assessment commands
 │   ├── profile     # Profile repository
 │   ├── analyze     # Analyze components and identify blockers
@@ -49,6 +55,412 @@ informatica-modernize
 └── config          # Configuration commands
     ├── show        # Show current configuration
     └── validate    # Validate configuration
+```
+
+### Migration Flow Commands
+
+These commands drive the complete modernization flow from upload to code generation.
+
+#### Upload Files
+
+Upload Informatica XML files (mappings, workflows, sessions, worklets, mapplets) to the system.
+
+```bash
+python -m cli.main upload <file|directory> [OPTIONS]
+```
+
+**Arguments**:
+- `<file|directory>`: Path to file or directory to upload
+
+**Options**:
+- `--recursive`: Recursively upload files from directory
+- `--session-id <id>`: Session ID to group uploads (auto-generated if not provided)
+- `--workspace-dir <dir>`: Workspace directory (default: `workspace`)
+- `--json`: Output results as JSON
+- `--verbose`: Verbose logging
+
+**Features**:
+- Returns `session_id` and `file_ids` for referencing in subsequent commands
+- Supports single files or entire directories
+- Auto-detects XML files when uploading directories
+
+**Examples**:
+```bash
+# Upload single file
+python -m cli.main upload samples/mapping1.xml
+
+# Upload directory with session
+python -m cli.main upload samples/ --recursive --session-id my-migration
+
+# Upload with JSON output
+python -m cli.main upload samples/ --recursive --json
+```
+
+**Output**: Returns session metadata including:
+- `session_id`: Session identifier for referencing uploaded files
+- `file_ids`: List of file identifiers
+- `count`: Number of files uploaded
+- `files`: List of uploaded filenames
+
+#### Parse Files
+
+Parse Informatica XML files into canonical models.
+
+```bash
+python -m cli.main parse [<type>] <target> [OPTIONS]
+```
+
+**Arguments**:
+- `<target>`: File ID, file path, directory, or use `--session-id`
+- `<type>`: Optional file type (`mapping`, `workflow`, `session`, `worklet`, `mapplet`, `all`)
+
+**Options**:
+- `--type <type>`: File type (auto-detected if not specified)
+- `--session-id <id>`: Parse all files from an upload session
+- `--enhance`: Enhance canonical models with AI after parsing
+- `--recursive`: Recursively parse directory
+- `--output <dir>`: Output directory for parsed models
+- `--workspace-dir <dir>`: Workspace directory (default: `workspace`)
+- `--json`: Output results as JSON
+- `--verbose`: Verbose logging
+
+**Features**:
+- **Auto-detection**: Automatically detects file type if not specified
+- **Session support**: Parse all files from an upload session
+- **Multiple input methods**: Use `session_id`, `file_id`, `file_path`, or `directory`
+- **AI enhancement**: Optional AI enhancement during parsing
+
+**Examples**:
+```bash
+# Parse from session (auto-detect each file type)
+python -m cli.main parse --session-id my-migration
+
+# Parse directory (auto-detect all files)
+python -m cli.main parse samples/ --recursive --enhance
+
+# Parse specific file (auto-detect type)
+python -m cli.main parse samples/mapping1.xml
+
+# Parse with type specified
+python -m cli.main parse mapping --session-id my-migration
+
+# Parse directory with enhancement
+python -m cli.main parse samples/ --recursive --enhance --json
+```
+
+**Output**: Returns parse results including:
+- `canonical_model`: Parsed canonical model (for single file)
+- `mapping_name`: Name of the mapping/transformation
+- `file_type`: Detected or specified file type
+- `parsed`: List of successfully parsed files (for batch operations)
+- `failed`: List of failed files with errors (for batch operations)
+
+#### Enhance Canonical Model
+
+Enhance a canonical model with AI insights and improvements.
+
+```bash
+python -m cli.main enhance <mapping_name> [OPTIONS]
+```
+
+**Arguments**:
+- `<mapping_name>`: Mapping name or ID to enhance
+
+**Options**:
+- `--output <dir>`: Output directory for enhanced models
+- `--workspace-dir <dir>`: Workspace directory (default: `workspace`)
+- `--json`: Output results as JSON
+- `--verbose`: Verbose logging
+
+**Features**:
+- Uses AI agents to enhance canonical models
+- Updates existing models in version store
+- Adds semantic tags, complexity metrics, and improvements
+
+**Examples**:
+```bash
+# Enhance a mapping
+python -m cli.main enhance M_CUSTOMER_LOAD
+
+# Enhance with JSON output
+python -m cli.main enhance M_CUSTOMER_LOAD --json
+```
+
+**Output**: Returns enhancement results including:
+- `mapping_name`: Name of the enhanced mapping
+- `enhanced`: Boolean indicating if enhancement was applied
+- `model`: Enhanced canonical model
+
+#### Generate Code
+
+Generate code from canonical models (PySpark, DLT, SQL, orchestration).
+
+```bash
+python -m cli.main generate-code <mapping_name> [OPTIONS]
+```
+
+**Arguments**:
+- `<mapping_name>`: Mapping name or ID
+
+**Options**:
+- `--type <type>`: Code type - `pyspark`, `dlt`, `sql`, `orchestration`, or `all` (default: `pyspark`)
+- `--output <dir>`: Output directory (default: `workspace/generated`)
+- `--review`: Review generated code with AI after generation
+- `--workspace-dir <dir>`: Workspace directory (default: `workspace`)
+- `--json`: Output results as JSON
+- `--verbose`: Verbose logging
+
+**Features**:
+- Generates code in multiple formats
+- Optional AI review after generation
+- Saves code metadata to Neo4j (if graph store enabled)
+- Quality scoring and validation
+
+**Examples**:
+```bash
+# Generate PySpark code
+python -m cli.main generate-code M_CUSTOMER_LOAD
+
+# Generate all code types
+python -m cli.main generate-code M_CUSTOMER_LOAD --type all
+
+# Generate with AI review
+python -m cli.main generate-code M_CUSTOMER_LOAD --type pyspark --review
+
+# Generate DLT code
+python -m cli.main generate-code M_CUSTOMER_LOAD --type dlt
+```
+
+**Output**: Returns generation results including:
+- Code type results (e.g., `pyspark`, `dlt`, `sql`)
+- `file`: Path to generated code file
+- `quality_score`: Code quality score
+- `review`: AI review results (if `--review` was used)
+
+#### Review Code
+
+Review generated code with AI to identify issues and improvements.
+
+```bash
+python -m cli.main review <file_path> [OPTIONS]
+```
+
+**Arguments**:
+- `<file_path>`: Path to code file to review
+
+**Options**:
+- `--fix`: Auto-fix issues found during review
+- `--output <dir>`: Output directory for reviewed/fixed code
+- `--workspace-dir <dir>`: Workspace directory (default: `workspace`)
+- `--json`: Output results as JSON
+- `--verbose`: Verbose logging
+
+**Features**:
+- AI-powered code review
+- Identifies issues, improvements, and best practices
+- Optional auto-fix capability
+- Updates AI review status in Neo4j
+
+**Examples**:
+```bash
+# Review code
+python -m cli.main review workspace/generated/m_customer_load.py
+
+# Review and fix
+python -m cli.main review workspace/generated/m_customer_load.py --fix
+
+# Review with JSON output
+python -m cli.main review workspace/generated/m_customer_load.py --json
+```
+
+**Output**: Returns review results including:
+- `file`: Path to reviewed file
+- `review`: Review details with issues and score
+- `fixed`: Boolean indicating if fixes were applied
+- `fixed_file`: Path to fixed code file (if `--fix` was used)
+
+#### Fix Code
+
+Fix code issues identified during review.
+
+```bash
+python -m cli.main fix <file_path> [OPTIONS]
+```
+
+**Arguments**:
+- `<file_path>`: Path to code file to fix
+
+**Options**:
+- `--output <path>`: Output path for fixed code (default: overwrites with `_fixed` suffix)
+- `--workspace-dir <dir>`: Workspace directory (default: `workspace`)
+- `--json`: Output results as JSON
+- `--verbose`: Verbose logging
+
+**Features**:
+- Automatically fixes issues found in code review
+- Uses AI agents to apply fixes
+- Updates AI fix status in Neo4j
+
+**Examples**:
+```bash
+# Fix code issues
+python -m cli.main fix workspace/generated/m_customer_load.py
+
+# Fix with custom output
+python -m cli.main fix workspace/generated/m_customer_load.py --output fixed_code.py
+```
+
+**Output**: Returns fix results including:
+- `file`: Path to original file
+- `fixed`: Boolean indicating if fixes were applied
+- `fixed_file`: Path to fixed code file
+
+#### Cleanup (Optional)
+
+Clean up workspace directories and Neo4j data. **⚠️ WARNING: This will delete data permanently!**
+
+**Note**: Currently, cleanup is performed using the utility script. A native CLI cleanup command is planned for future releases.
+
+**Using Utility Script** (Current Method):
+```bash
+python scripts/utils/cleanup.py [OPTIONS]
+```
+
+**Options**:
+- `--workspace` or `--files`: Clean up workspace directory (removes uploaded, parsed, generated files)
+- `--neo4j`: Delete all data from Neo4j graph database
+- `--component <type>`: Delete specific component type from Neo4j (use with `--neo4j`)
+  - Available types: `Transformation`, `ReusableTransformation`, `Pipeline`, `Task`, `GeneratedCode`, `Mapping`, `Workflow`, `Session`, `Worklet`, `Source`, `Target`, `Table`, `SourceFile`, `all`
+- `--all`: Clean up everything (workspace + Neo4j)
+- `--yes`: Skip confirmation prompt (use with caution!)
+
+**⚠️ WARNING**: 
+- Cleanup operations are **irreversible**
+- Always backup important data before cleanup
+- Use `--yes` flag only when you're certain you want to delete data
+- Neo4j cleanup will remove all graph data including relationships
+
+**Examples**:
+```bash
+# Clean workspace directory (with confirmation)
+python scripts/utils/cleanup.py --workspace
+
+# Clean Neo4j data (with confirmation)
+python scripts/utils/cleanup.py --neo4j
+
+# Clean specific component type from Neo4j
+python scripts/utils/cleanup.py --neo4j --component Transformation
+
+# Clean everything (with confirmation)
+python scripts/utils/cleanup.py --all
+
+# Clean everything without confirmation (⚠️ DANGEROUS)
+python scripts/utils/cleanup.py --all --yes
+
+# Clean workspace without confirmation
+python scripts/utils/cleanup.py --workspace --yes
+```
+
+**What gets cleaned**:
+
+**Workspace cleanup** (`--workspace` or `--files`):
+- `workspace/staging/` - Uploaded XML files
+- `workspace/parsed/` - Parsed canonical models
+- `workspace/parse_ai/` - AI-enhanced models
+- `workspace/generated/` - Generated code files
+- `workspace/generated_ai/` - AI-reviewed code files
+- `workspace/versions/` - Version store JSON files
+- `workspace/diagrams/` - Generated diagrams
+- `workspace/logs/` - Log files
+
+**Neo4j cleanup** (`--neo4j`):
+- All nodes and relationships in the graph database
+- Component metadata
+- Code metadata
+- Lineage relationships
+- Assessment data
+
+**Component-specific cleanup** (`--component`):
+- Only deletes nodes of the specified type and their relationships
+- Available types: `Transformation`, `ReusableTransformation`, `Pipeline`, `Task`, `GeneratedCode`, `Mapping`, `Workflow`, `Session`, `Worklet`, `Source`, `Target`, `Table`, `SourceFile`, `all`
+
+**Manual Cleanup** (Alternative):
+
+If you prefer manual cleanup:
+
+```bash
+# Clean workspace directory manually
+rm -rf workspace/staging workspace/parsed workspace/parse_ai workspace/generated workspace/generated_ai workspace/versions workspace/diagrams workspace/logs
+
+# Clean Neo4j manually (using cypher-shell or Neo4j Browser)
+# Run: MATCH (n) DETACH DELETE n
+```
+
+### Complete Migration Flow Example
+
+```bash
+# 1. Upload files
+python -m cli.main upload samples/ --recursive --session-id migration-001
+
+# 2. Parse all files from session (auto-detect types)
+python -m cli.main parse --session-id migration-001 --enhance
+
+# 3. Generate code for a mapping
+python -m cli.main generate-code M_CUSTOMER_LOAD --type pyspark --review
+
+# 4. Review generated code
+python -m cli.main review workspace/generated/m_customer_load.py --fix
+
+# 5. Assess repository
+python -m cli.main assess profile
+```
+
+### Hybrid Mode Support
+
+The CLI supports two modes:
+
+**Direct Mode (default)**:
+- Calls Python modules directly
+- No HTTP overhead
+- Works offline
+- Uses workspace directory
+
+**HTTP Mode (optional)**:
+- Makes HTTP requests to API endpoints
+- Requires API server running
+- Enable with `--api-url` flag
+
+**Examples**:
+```bash
+# Direct mode (default)
+python -m cli.main upload samples/ --recursive
+
+# HTTP mode
+python -m cli.main --api-url http://localhost:8000 upload samples/ --recursive
+```
+
+### Session Management
+
+The CLI uses session management to track uploaded files:
+
+1. **Upload** returns `session_id` and `file_ids`
+2. **Subsequent commands** can reference files using:
+   - `--session-id`: Process all files from a session
+   - `file_id`: Process a specific file
+   - `file_path`: Process a file by path
+   - `directory`: Process all files in a directory
+
+**Example workflow**:
+```bash
+# Upload creates a session
+python -m cli.main upload samples/ --recursive --session-id my-migration
+# Output: {"session_id": "my-migration", "file_ids": [...], "count": 10}
+
+# Parse all files from session
+python -m cli.main parse --session-id my-migration
+
+# Generate code for specific mapping
+python -m cli.main generate-code M_CUSTOMER_LOAD
 ```
 
 ### Assessment Commands
@@ -814,6 +1226,41 @@ version_store:
 
 ### Complete Modernization Workflow
 
+**Using CLI (Recommended)**:
+```bash
+# 1. Setup environment
+./scripts/setup/setup_neo4j.sh
+python scripts/schema/create_neo4j_schema.py
+
+# Optional: Clean up previous runs (⚠️ WARNING: Deletes data!)
+# python scripts/utils/cleanup.py --all --yes
+
+# 2. Upload and parse files
+python -m cli.main upload samples/ --recursive --session-id migration-001
+python -m cli.main parse --session-id migration-001 --enhance
+
+# 3. Generate code
+python -m cli.main generate-code M_CUSTOMER_LOAD --type pyspark --review
+
+# 4. Review and fix code
+python -m cli.main review workspace/generated/m_customer_load.py --fix
+
+# 5. Validate everything
+python scripts/validate_canonical_model.py --strict
+python scripts/validate_generated_code.py --strict
+
+# 6. Run assessment
+python -m cli.main assess profile
+python -m cli.main assess analyze
+python -m cli.main assess report --format html --output assessment.html
+
+# Optional: Clean up after completion (⚠️ WARNING: Deletes data!)
+# python scripts/utils/cleanup.py --workspace --yes  # Clean workspace only
+# python scripts/utils/cleanup.py --neo4j --yes      # Clean Neo4j only
+# python scripts/utils/cleanup.py --all --yes        # Clean everything
+```
+
+**Using Test Flow Script (Alternative)**:
 ```bash
 # 1. Setup environment
 ./scripts/setup/setup_neo4j.sh
@@ -879,6 +1326,25 @@ python -m cli.main assess tco \
 
 ### Cleanup Workflow
 
+**Using CLI (Recommended)**:
+```bash
+# Clean up workspace directory (with confirmation)
+python -m cli.main cleanup --workspace
+
+# Clean up Neo4j data (with confirmation)
+python -m cli.main cleanup --neo4j
+
+# Clean up specific component type from Neo4j
+python -m cli.main cleanup --neo4j --neo4j-component Transformation
+
+# Clean up everything (with confirmation)
+python -m cli.main cleanup --all
+
+# Clean up everything without confirmation (⚠️ DANGEROUS)
+python -m cli.main cleanup --all --yes
+```
+
+**Using Utility Script (Alternative)**:
 ```bash
 # Clean up everything
 python scripts/utils/cleanup.py --all --yes
@@ -941,6 +1407,20 @@ python scripts/utils/cleanup.py --files --yes
 ### Main CLI Commands
 
 ```bash
+# Migration Flow
+python -m cli.main upload samples/ --recursive --session-id migration-001
+python -m cli.main parse --session-id migration-001 --enhance
+python -m cli.main enhance M_CUSTOMER_LOAD
+python -m cli.main generate-code M_CUSTOMER_LOAD --type pyspark --review
+python -m cli.main review workspace/generated/m_customer_load.py --fix
+python -m cli.main fix workspace/generated/m_customer_load.py
+
+# Cleanup (⚠️ WARNING: Deletes data! - Uses utility script)
+python scripts/utils/cleanup.py --workspace          # Clean workspace only
+python scripts/utils/cleanup.py --neo4j              # Clean Neo4j only
+python scripts/utils/cleanup.py --all                # Clean everything
+python scripts/utils/cleanup.py --neo4j --component Transformation  # Clean specific component
+
 # Assessment
 python -m cli.main assess profile
 python -m cli.main assess analyze
