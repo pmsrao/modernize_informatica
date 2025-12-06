@@ -23,18 +23,21 @@ class VersionStore:
     
     def __init__(self, path: str = "./versions", 
                  graph_store: Optional[object] = None,
-                 graph_first: bool = False):
+                 graph_first: bool = False,
+                 parsed_dir: Optional[Path] = None):
         """Initialize version store.
         
         Args:
             path: Directory path for storing versions (fallback/export)
             graph_store: Optional GraphStore instance for graph storage
             graph_first: Whether to use graph as primary storage
+            parsed_dir: Optional path to parsed directory for fallback loading
         """
         self.path = Path(path)
         self.path.mkdir(parents=True, exist_ok=True)
         self.graph_store = graph_store
         self.graph_first = graph_first
+        self.parsed_dir = Path(parsed_dir) if parsed_dir else None
         
         if graph_first and not graph_store:
             raise ValueError("graph_store required when graph_first=True")
@@ -114,7 +117,13 @@ class VersionStore:
             raise ValidationError(f"Failed to save model: {str(e)}", field="name")
 
     def load(self, name: str) -> Optional[Dict[str, Any]]:
-        """Load model from version store (graph-first or JSON-first).
+        """Load model from version store (graph-first or JSON-first) with fallback to parsed files.
+        
+        This method handles:
+        - Loading from graph or version store JSON
+        - Checking model completeness (must have transformations)
+        - Falling back to parsed files if model is incomplete or missing
+        - Ensuring transformation_name is set
         
         Args:
             name: Model name/identifier
@@ -122,21 +131,87 @@ class VersionStore:
         Returns:
             Model data or None if not found
         """
+        logger.debug(f"[DEBUG] VersionStore.load() called for: {name}")
+        model = None
+        
+        # Try loading from primary source (graph or version store JSON)
         if self.graph_first:
             # Load from graph first
             if self.graph_store:
                 try:
                     model = self.graph_store.load_transformation(name)
                     if model:
-                        logger.debug(f"Model loaded from graph: {name}")
-                        return model
+                        logger.debug(f"[DEBUG] Model loaded from graph: {name}")
                 except Exception as e:
-                    logger.warning(f"Failed to load from graph: {str(e)}")
-            # Fall back to JSON
-            return self._load_json(name)
+                    logger.warning(f"[DEBUG] Failed to load from graph: {str(e)}")
+            # Fall back to version store JSON
+            if not model:
+                model = self._load_json(name)
+                if model:
+                    logger.debug(f"[DEBUG] Model loaded from version store JSON: {name}")
         else:
-            # Load from JSON first
-            return self._load_json(name)
+            # Load from version store JSON first
+            model = self._load_json(name)
+            if model:
+                logger.debug(f"[DEBUG] Model loaded from version store JSON: {name}")
+        
+        # Check if model is complete (has transformations)
+        if model:
+            transformations_count = len(model.get('transformations', []))
+            if transformations_count == 0:
+                logger.warning(f"[DEBUG] Model from version store has no transformations, trying parsed files as fallback")
+                model = None  # Force fallback to parsed files
+        
+        # Fallback to parsed files if model not found or incomplete
+        if not model and self.parsed_dir:
+            model = self._load_from_parsed(name)
+            if model:
+                logger.debug(f"[DEBUG] Model loaded from parsed files: {name}")
+        
+        # Ensure transformation_name is set
+        if model:
+            if not model.get('transformation_name') and not model.get('mapping_name'):
+                logger.warning(f"[DEBUG] Model missing transformation_name, setting from parameter: {name}")
+                model['transformation_name'] = name
+            
+            # Log model structure for debugging
+            logger.debug(f"[DEBUG] Model structure for {name}:")
+            logger.debug(f"[DEBUG]   - transformation_name: {model.get('transformation_name', 'N/A')}")
+            logger.debug(f"[DEBUG]   - sources: {len(model.get('sources', []))} items")
+            logger.debug(f"[DEBUG]   - targets: {len(model.get('targets', []))} items")
+            logger.debug(f"[DEBUG]   - transformations: {len(model.get('transformations', []))} items")
+            if model.get('transformations'):
+                trans_types = [t.get('type', 'UNKNOWN') for t in model.get('transformations', [])]
+                logger.debug(f"[DEBUG]   - transformation types: {trans_types}")
+            else:
+                logger.warning(f"[DEBUG] WARNING: Model has no transformations! This will result in empty code generation.")
+        
+        return model
+    
+    def _load_from_parsed(self, name: str) -> Optional[Dict[str, Any]]:
+        """Load model from parsed directory.
+        
+        Args:
+            name: Model name/identifier
+            
+        Returns:
+            Model data or None if not found
+        """
+        if not self.parsed_dir or not self.parsed_dir.exists():
+            return None
+        
+        # Try mapping file first (most common)
+        mapping_file = self.parsed_dir / f"{name}_mapping.json"
+        if mapping_file.exists():
+            try:
+                with open(mapping_file, 'r') as f:
+                    model = json.load(f)
+                logger.debug(f"[DEBUG] Loaded from parsed file: {mapping_file}")
+                return model
+            except Exception as e:
+                logger.warning(f"[DEBUG] Failed to load from parsed file {mapping_file}: {e}")
+        
+        return None
     
     def _load_json(self, name: str) -> Optional[Dict[str, Any]]:
         """Load model from JSON file.

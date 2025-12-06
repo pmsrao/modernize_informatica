@@ -29,6 +29,13 @@ class PySparkGenerator:
         Returns:
             Complete PySpark code as string
         """
+        transformation_name = model.get("transformation_name", model.get("mapping_name", "Unknown"))
+        logger.info(f"[DEBUG] Starting code generation for: {transformation_name}")
+        logger.debug(f"[DEBUG] Model keys: {list(model.keys())}")
+        logger.debug(f"[DEBUG] Sources count: {len(model.get('sources', []))}")
+        logger.debug(f"[DEBUG] Targets count: {len(model.get('targets', []))}")
+        logger.debug(f"[DEBUG] Transformations count: {len(model.get('transformations', []))}")
+        
         lines = []
         
         # Imports
@@ -44,11 +51,14 @@ class PySparkGenerator:
         lines.append("")
         
         # Read sources
+        sources = model.get("sources", [])
+        logger.debug(f"[DEBUG] Processing {len(sources)} sources")
         lines.append("# Read source tables")
-        for source in model.get("sources", []):
+        for source in sources:
             source_name = source.get("name", "")
             table_name = source.get("table", "")
             database = source.get("database", "")
+            logger.debug(f"[DEBUG] Source: name={source_name}, table={table_name}, database={database}")
             
             if database:
                 full_table = f"{database}.{table_name}"
@@ -73,92 +83,163 @@ class PySparkGenerator:
         other_transformations = []
         
         transformations = model.get("transformations", [])
+        logger.debug(f"[DEBUG] Total transformations: {len(transformations)}")
         for trans in transformations:
+            trans_type = trans.get("type", "UNKNOWN")
+            trans_name = trans.get("name", "UNKNOWN")
+            logger.debug(f"[DEBUG] Transformation: {trans_name} (type: {trans_type})")
             if trans.get("type") == "SOURCE_QUALIFIER":
                 source_qualifiers.append(trans)
             else:
                 other_transformations.append(trans)
         
+        logger.debug(f"[DEBUG] Source qualifiers: {len(source_qualifiers)}, Other transformations: {len(other_transformations)}")
+        
         # Process Source Qualifiers first
         for trans in source_qualifiers:
-            lines.extend(self._generate_source_qualifier(trans))
+            trans_name = trans.get("name", "UNKNOWN")
+            logger.debug(f"[DEBUG] Processing source qualifier: {trans_name}")
+            sq_lines = self._generate_source_qualifier(trans)
+            logger.debug(f"[DEBUG] Generated {len(sq_lines)} lines for source qualifier {trans_name}")
+            if sq_lines:
+                logger.debug(f"[DEBUG] Source qualifier code preview: {sq_lines[:3] if len(sq_lines) >= 3 else sq_lines}")
+            lines.extend(sq_lines)
             lines.append("")
         
+        # Set base DataFrame to first source qualifier if available
+        if source_qualifiers:
+            first_sq = source_qualifiers[0]
+            sq_name = first_sq.get("name", "UNKNOWN")
+            logger.debug(f"[DEBUG] Setting base DataFrame to: df_{sq_name}")
+            lines.append("# Start with base DataFrame from first source qualifier")
+            lines.append(f"df = df_{sq_name}")
+            lines.append("")
+        elif model.get("sources"):
+            # Fallback to first source if no source qualifiers
+            first_source = model["sources"][0]
+            logger.debug(f"[DEBUG] Setting base DataFrame to first source: {first_source.get('name', 'source')}")
+            lines.append("# Start with base DataFrame from first source")
+            lines.append(f"df = df_{first_source.get('name', 'source')}")
+            lines.append("")
+        else:
+            logger.warning(f"[DEBUG] No source qualifiers and no sources found for {transformation_name}")
+        
         # Process other transformations in order
+        logger.debug(f"[DEBUG] Processing {len(other_transformations)} other transformations")
         for trans in other_transformations:
             trans_type = trans.get("type", "")
             trans_name = trans.get("name", "")
+            logger.debug(f"[DEBUG] Processing transformation: {trans_name} (type: {trans_type})")
             
-            # Check if this is a reusable transformation
-            if trans.get("is_reusable", False):
-                reusable_name = trans.get("reusable_name", trans_name)
-                reusable_transforms[reusable_name] = trans
-                # Generate as function on first encounter
-                lines.extend(self._generate_reusable_transformation_function(trans, reusable_name))
+            try:
+                # Check if this is a reusable transformation
+                if trans.get("is_reusable", False):
+                    reusable_name = trans.get("reusable_name", trans_name)
+                    reusable_transforms[reusable_name] = trans
+                    # Generate as function on first encounter
+                    trans_lines = self._generate_reusable_transformation_function(trans, reusable_name)
+                    lines.extend(trans_lines)
+                    lines.append("")
+                
+                trans_lines = []
+                if trans_type == "MAPPLET_INSTANCE":
+                    logger.debug(f"[DEBUG] Generating MAPPLET_INSTANCE: {trans_name}")
+                    trans_lines = self._generate_mapplet_instance(trans, model)
+                elif trans_type == "CUSTOM_TRANSFORMATION":
+                    logger.debug(f"[DEBUG] Generating CUSTOM_TRANSFORMATION: {trans_name}")
+                    trans_lines = self._generate_custom_transformation(trans)
+                elif trans_type == "STORED_PROCEDURE":
+                    logger.debug(f"[DEBUG] Generating STORED_PROCEDURE: {trans_name}")
+                    trans_lines = self._generate_stored_procedure(trans)
+                elif trans_type == "EXPRESSION":
+                    logger.debug(f"[DEBUG] Generating EXPRESSION: {trans_name}")
+                    # Check if reusable - if so, call function instead of generating inline
+                    if trans.get("is_reusable", False):
+                        reusable_name = trans.get("reusable_name", trans_name)
+                        trans_lines = self._generate_reusable_transformation_call(trans, reusable_name)
+                    else:
+                        trans_lines = self._generate_expression(trans)
+                elif trans_type == "LOOKUP":
+                    logger.debug(f"[DEBUG] Generating LOOKUP: {trans_name}")
+                    # Check if reusable
+                    if trans.get("is_reusable", False):
+                        reusable_name = trans.get("reusable_name", trans_name)
+                        trans_lines = self._generate_reusable_transformation_call(trans, reusable_name)
+                    else:
+                        trans_lines = self._generate_lookup(trans, model)
+                elif trans_type == "JOINER":
+                    logger.debug(f"[DEBUG] Generating JOINER: {trans_name}")
+                    trans_lines = self._generate_joiner(trans, model)
+                elif trans_type == "AGGREGATOR":
+                    logger.debug(f"[DEBUG] Generating AGGREGATOR: {trans_name}")
+                    trans_lines = self._generate_aggregator(trans)
+                elif trans_type == "FILTER":
+                    logger.debug(f"[DEBUG] Generating FILTER: {trans_name}")
+                    trans_lines = self._generate_filter(trans)
+                elif trans_type == "ROUTER":
+                    logger.debug(f"[DEBUG] Generating ROUTER: {trans_name}")
+                    trans_lines = self._generate_router(trans)
+                elif trans_type == "SORTER":
+                    logger.debug(f"[DEBUG] Generating SORTER: {trans_name}")
+                    trans_lines = self._generate_sorter(trans)
+                elif trans_type == "RANK":
+                    logger.debug(f"[DEBUG] Generating RANK: {trans_name}")
+                    trans_lines = self._generate_rank(trans)
+                elif trans_type == "UNION":
+                    logger.debug(f"[DEBUG] Generating UNION: {trans_name}")
+                    trans_lines = self._generate_union(trans)
+                elif trans_type == "UPDATE_STRATEGY":
+                    logger.debug(f"[DEBUG] Generating UPDATE_STRATEGY: {trans_name}")
+                    trans_lines = self._generate_update_strategy(trans)
+                elif trans_type == "SOURCE_QUALIFIER":
+                    logger.debug(f"[DEBUG] Generating SOURCE_QUALIFIER: {trans_name}")
+                    trans_lines = self._generate_source_qualifier(trans)
+                else:
+                    logger.warning(f"[DEBUG] Unknown transformation type: {trans_type} for {trans_name}")
+                    trans_lines = [f"# TODO: Implement transformation {trans_name} (type: {trans_type})"]
+                
+                # Add transformation code if generated
+                if trans_lines:
+                    logger.debug(f"[DEBUG] Generated {len(trans_lines)} lines for {trans_name}")
+                    lines.extend(trans_lines)
+                    lines.append("")
+                else:
+                    logger.warning(f"[DEBUG] No code generated for transformation {trans_name} (type: {trans_type})")
+                    lines.append(f"# TODO: Code generation failed for {trans_name} (type: {trans_type})")
+                    lines.append("")
+            except Exception as e:
+                logger.error(f"[DEBUG] Error generating code for transformation {trans_name} (type: {trans_type}): {e}", exc_info=True)
+                lines.append(f"# ERROR: Failed to generate code for {trans_name}: {str(e)}")
                 lines.append("")
-            
-            if trans_type == "MAPPLET_INSTANCE":
-                lines.extend(self._generate_mapplet_instance(trans, model))
-            elif trans_type == "CUSTOM_TRANSFORMATION":
-                lines.extend(self._generate_custom_transformation(trans))
-            elif trans_type == "STORED_PROCEDURE":
-                lines.extend(self._generate_stored_procedure(trans))
-            elif trans_type == "EXPRESSION":
-                # Check if reusable - if so, call function instead of generating inline
-                if trans.get("is_reusable", False):
-                    reusable_name = trans.get("reusable_name", trans_name)
-                    lines.extend(self._generate_reusable_transformation_call(trans, reusable_name))
-                else:
-                    lines.extend(self._generate_expression(trans))
-            elif trans_type == "LOOKUP":
-                # Check if reusable
-                if trans.get("is_reusable", False):
-                    reusable_name = trans.get("reusable_name", trans_name)
-                    lines.extend(self._generate_reusable_transformation_call(trans, reusable_name))
-                else:
-                    lines.extend(self._generate_lookup(trans))
-            elif trans_type == "JOINER":
-                lines.extend(self._generate_joiner(trans, model))
-            elif trans_type == "AGGREGATOR":
-                lines.extend(self._generate_aggregator(trans))
-            elif trans_type == "FILTER":
-                lines.extend(self._generate_filter(trans))
-            elif trans_type == "ROUTER":
-                lines.extend(self._generate_router(trans))
-            elif trans_type == "SORTER":
-                lines.extend(self._generate_sorter(trans))
-            elif trans_type == "RANK":
-                lines.extend(self._generate_rank(trans))
-            elif trans_type == "UNION":
-                lines.extend(self._generate_union(trans))
-            elif trans_type == "UPDATE_STRATEGY":
-                lines.extend(self._generate_update_strategy(trans))
-            elif trans_type == "SOURCE_QUALIFIER":
-                lines.extend(self._generate_source_qualifier(trans))
-            
-            lines.append("")
         
         # Write to target
+        targets = model.get("targets", [])
+        logger.debug(f"[DEBUG] Processing {len(targets)} targets")
         lines.append("# Write to target table")
-        for target in model.get("targets", []):
+        for target in targets:
             target_name = target.get("name", "")
             table_name = target.get("table", "")
             database = target.get("database", "")
+            logger.debug(f"[DEBUG] Target: name={target_name}, table={table_name}, database={database}")
             
             if database:
                 full_table = f"{database}.{table_name}"
             else:
-                full_table = table_name
+                full_table = table_name if table_name else target_name
             
             # Check for SCD type
             scd_type = model.get("scd_type", "NONE")
+            logger.debug(f"[DEBUG] SCD type: {scd_type}")
             if scd_type == "SCD2":
                 lines.append(f"# SCD2 merge operation")
                 lines.append(f"df.write.format('delta').mode('overwrite').saveAsTable('{full_table}')")
             else:
                 lines.append(f"df.write.format('delta').mode('overwrite').saveAsTable('{full_table}')")
         
-        return "\n".join(lines)
+        result_code = "\n".join(lines)
+        logger.info(f"[DEBUG] Code generation completed for {transformation_name}. Generated {len(result_code.split(chr(10)))} lines")
+        logger.debug(f"[DEBUG] Generated code preview (first 10 lines):\n{chr(10).join(result_code.split(chr(10))[:10])}")
+        return result_code
     
     def _generate_expression(self, trans: Dict[str, Any]) -> List[str]:
         """Generate code for Expression transformation."""
@@ -210,8 +291,13 @@ class PySparkGenerator:
         
         return lines
     
-    def _generate_lookup(self, trans: Dict[str, Any]) -> List[str]:
-        """Generate code for Lookup transformation."""
+    def _generate_lookup(self, trans: Dict[str, Any], model: Dict[str, Any] = None) -> List[str]:
+        """Generate code for Lookup transformation.
+        
+        Args:
+            trans: Lookup transformation
+            model: Optional canonical model to extract table name from connectors/attributes
+        """
         lines = []
         trans_name = trans.get('name', '')
         lines.append(f"# Lookup: {trans_name}")
@@ -220,35 +306,81 @@ class PySparkGenerator:
         table_name = trans.get("table_name", "")
         condition = trans.get("condition", {})
         
+        # Try to extract table name from transformation name pattern (LK_TABLENAME -> TABLENAME)
+        if not table_name and trans_name.startswith("LK_"):
+            # Common pattern: LK_CUSTOMER_KEY -> DIM_CUSTOMER or CUSTOMER
+            potential_table = trans_name[3:]  # Remove "LK_" prefix
+            # Try common dimension table patterns
+            if "KEY" in potential_table:
+                base_name = potential_table.replace("_KEY", "").replace("KEY", "")
+                # Try dimension table naming: DIM_<name>
+                table_name = f"DIM_{base_name}"
+            else:
+                table_name = potential_table
+        
+        # Try to extract from attributes or ports if available
         if not table_name:
-            # Try to get from LOOKUPTABLE in ports or other attributes
-            lines.append(f"# Lookup table name not found for {trans_name}")
-            lines.append(f"# lookup_df = spark.table('LOOKUP_TABLE_NAME')")
-            lines.append(f"# df = df.join(F.broadcast(lookup_df), join_condition, 'left')")
-            return lines
+            # Check for lookup table in attributes (from Informatica XML parsing)
+            attrs = trans.get("attributes", {})
+            if attrs:
+                table_name = (attrs.get("Lookup Table") or 
+                            attrs.get("lookup_table") or
+                            attrs.get("table_name"))
+        
+        # Try to infer from connectors if model provided
+        if not table_name and model:
+            connectors = model.get("connectors", [])
+            # Look for connectors that might indicate lookup table
+            # This is a fallback - ideally table_name should be in transformation spec
+            pass  # Connectors don't directly contain table names
+        
+        if not table_name:
+            # Generate placeholder code with inferred table name
+            inferred_table = f"DIM_{trans_name[3:] if trans_name.startswith('LK_') else 'LOOKUP_TABLE'}"
+            if trans_name.startswith("LK_") and "_KEY" in trans_name:
+                base_name = trans_name[3:].replace("_KEY", "").replace("KEY", "")
+                inferred_table = f"DIM_{base_name}"
+            
+            lines.append(f"# Lookup table name inferred from transformation name: {trans_name} -> {inferred_table}")
+            lines.append(f"# TODO: Verify table name matches actual lookup table in Informatica mapping")
+            table_name = inferred_table
         
         # Broadcast join for lookup (both connected and unconnected can be joined)
         # Lookup tables are typically small and benefit from broadcast join
-        lines.append(f"lookup_df = spark.table('{table_name}')")
+        lines.append(f"lookup_df_{trans_name} = spark.table('{table_name}')")
         lines.append(f"# Performance optimization: Using broadcast join for lookup table")
         lines.append(f"# Broadcast join is efficient for small lookup tables (< 100MB)")
         
+        # Build join condition
+        join_condition = None
         if condition:
             source_port = condition.get("source_port", "")
             lookup_port = condition.get("lookup_port", "")
+            operator = condition.get("operator", "=")
             if source_port and lookup_port:
-                lines.append(f"df = df.join(F.broadcast(lookup_df), "
-                           f"df['{source_port}'] == lookup_df['{lookup_port}'], 'left')")
+                if operator == "=":
+                    join_condition = f"df['{source_port}'] == lookup_df_{trans_name}['{lookup_port}']"
+                else:
+                    join_condition = f"df['{source_port}'] {operator} lookup_df_{trans_name}['{lookup_port}']"
+        
+        # If no explicit condition, try to infer from transformation name pattern
+        if not join_condition:
+            # Common pattern: LK_CUSTOMER_KEY -> join on CUSTOMER_ID
+            if trans_name.startswith("LK_") and "_KEY" in trans_name:
+                base_name = trans_name[3:].replace("_KEY", "").replace("KEY", "")
+                # Try common key patterns
+                key_field = f"{base_name}_ID"
+                join_condition = f"df['{key_field}'] == lookup_df_{trans_name}['{key_field}']"
+                lines.append(f"# Join condition inferred from transformation name pattern")
+                lines.append(f"# TODO: Verify join condition matches actual lookup condition")
             else:
-                # Try to infer from common port names
-                lines.append(f"# Join condition not fully specified for {trans_name}")
-                lines.append(f"# df = df.join(F.broadcast(lookup_df), join_condition, 'left')")
-        else:
-            # No explicit condition - might need to infer from connectors or use common key
-            # For now, generate a placeholder
-            lines.append(f"# No explicit join condition found for {trans_name}")
-            lines.append(f"# Infer join condition from connectors or use common key pattern")
-            lines.append(f"# df = df.join(F.broadcast(lookup_df), df['key'] == lookup_df['key'], 'left')")
+                # Generic placeholder
+                join_condition = "df['key'] == lookup_df_{trans_name}['key']"
+                lines.append(f"# Join condition not specified - using placeholder")
+                lines.append(f"# TODO: Update join condition based on actual lookup specification")
+        
+        # Generate join
+        lines.append(f"df = df.join(F.broadcast(lookup_df_{trans_name}), {join_condition}, 'left')")
         
         return lines
     
@@ -535,25 +667,37 @@ class PySparkGenerator:
         sql_query = trans.get("sql_query", "")
         filter_condition = trans.get("filter", "")
         
-        # Extract table name from SQL query if available
-        # Format: "SELECT * FROM TABLE_NAME" or "SELECT * FROM DATABASE.TABLE_NAME"
-        table_name = None
-        if sql_query:
-            # Try to extract table name from SQL
-            import re
-            match = re.search(r'FROM\s+([\w\.]+)', sql_query, re.IGNORECASE)
-            if match:
-                table_name = match.group(1)
+        logger.debug(f"[DEBUG] _generate_source_qualifier: {trans_name}")
+        logger.debug(f"[DEBUG] SQL query: {sql_query[:100] if sql_query else 'None'}...")
+        logger.debug(f"[DEBUG] Filter condition: {filter_condition}")
         
-        # If no table name found, try to infer from transformation name
+        # Priority 1: If SQL query exists, use it directly (most accurate)
+        # This handles complex queries with WHERE clauses, JOINs, etc.
+        if sql_query:
+            logger.debug(f"[DEBUG] Using SQL query for source qualifier {trans_name}")
+            lines.append(f"# Source Qualifier: {trans_name}")
+            # Escape triple quotes in SQL query if present
+            escaped_sql = sql_query.replace('"""', '\\"\\"\\"')
+            lines.append(f"df_{trans_name} = spark.sql(\"\"\"{escaped_sql}\"\"\")")
+            
+            # Apply additional filter if present (rare, but possible)
+            if filter_condition:
+                lines.append(f"df_{trans_name} = df_{trans_name}.filter({filter_condition})")
+            logger.debug(f"[DEBUG] Generated {len(lines)} lines for source qualifier {trans_name}")
+            return lines
+        
+        # Priority 2: Try to extract table name from transformation name
         # Source Qualifiers often follow pattern: SQ_TABLENAME
-        if not table_name and trans_name.startswith("SQ_"):
+        table_name = None
+        if trans_name.startswith("SQ_"):
             # Try to extract table name from SQ_ prefix
             potential_table = trans_name[3:]  # Remove "SQ_" prefix
             table_name = potential_table
+            logger.debug(f"[DEBUG] Extracted table name from transformation name: {table_name}")
         
         if table_name:
-            # Generate DataFrame read
+            # Generate DataFrame read from table
+            logger.debug(f"[DEBUG] Using table name for source qualifier {trans_name}: {table_name}")
             lines.append(f"# Source Qualifier: {trans_name}")
             lines.append(f"df_{trans_name} = spark.table('{table_name}')")
             
@@ -561,18 +705,14 @@ class PySparkGenerator:
             if filter_condition:
                 lines.append(f"df_{trans_name} = df_{trans_name}.filter({filter_condition})")
         else:
-            # Fallback: use SQL query directly if available
-            if sql_query:
-                lines.append(f"# Source Qualifier: {trans_name}")
-                lines.append(f"df_{trans_name} = spark.sql(\"\"\"{sql_query}\"\"\")")
-                if filter_condition:
-                    lines.append(f"df_{trans_name} = df_{trans_name}.filter({filter_condition})")
-            else:
-                # Last resort: placeholder
-                lines.append(f"# Source Qualifier: {trans_name}")
-                lines.append(f"# TODO: Implement source qualifier for {trans_name}")
-                lines.append(f"df_{trans_name} = spark.table('UNKNOWN_TABLE')")
+            # Last resort: placeholder with warning
+            logger.warning(f"[DEBUG] No SQL query or table name found for source qualifier {trans_name}")
+            lines.append(f"# Source Qualifier: {trans_name}")
+            lines.append(f"# TODO: Implement source qualifier for {trans_name}")
+            lines.append(f"# No SQL query or table name found - please specify source")
+            lines.append(f"df_{trans_name} = spark.table('UNKNOWN_TABLE')")
         
+        logger.debug(f"[DEBUG] Final generated lines for source qualifier {trans_name}: {len(lines)}")
         return lines
     
     def _translate_expression_simple(self, expression: str) -> str:
@@ -686,7 +826,7 @@ class PySparkGenerator:
             if mapplet_trans_type == "EXPRESSION":
                 lines.extend(self._generate_expression(mapplet_trans))
             elif mapplet_trans_type == "LOOKUP":
-                lines.extend(self._generate_lookup(mapplet_trans))
+                lines.extend(self._generate_lookup(mapplet_trans, model))
             elif mapplet_trans_type == "JOINER":
                 lines.extend(self._generate_joiner(mapplet_trans))
             elif mapplet_trans_type == "AGGREGATOR":
@@ -775,7 +915,7 @@ class PySparkGenerator:
                 # Indent all lines
                 lines.extend([f"    {line}" if line.strip() else "" for line in trans_lines])
             elif trans_type == "LOOKUP":
-                trans_lines = self._generate_lookup(trans)
+                trans_lines = self._generate_lookup(trans, mapplet_data)
                 lines.extend([f"    {line}" if line.strip() else "" for line in trans_lines])
             elif trans_type == "JOINER":
                 trans_lines = self._generate_joiner(trans, mapplet_data)

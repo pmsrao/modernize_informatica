@@ -22,6 +22,16 @@ from utils.exceptions import ModernizationError
 
 logger = get_logger(__name__)
 
+# Import AST and parser for expression storage
+try:
+    from translator.ast_nodes import ASTNode, serialize_ast_to_string
+    from translator.tokenizer import tokenize
+    from translator.parser_engine import Parser
+    AST_AVAILABLE = True
+except ImportError as e:
+    AST_AVAILABLE = False
+    logger.debug(f"AST parser not available - expression AST storage will be skipped: {e}")
+
 
 class GraphStore:
     """Neo4j-based storage for canonical models."""
@@ -176,6 +186,111 @@ class GraphStore:
         return field_refs
     
     @staticmethod
+    def _parse_expression_to_ast(expression: str) -> Optional[Any]:
+        """Parse expression string to AST node.
+        
+        Args:
+            expression: Expression string to parse
+            
+        Returns:
+            ASTNode if parsing succeeds, None otherwise
+        """
+        if not AST_AVAILABLE or not expression:
+            return None
+        
+        try:
+            tokens = tokenize(expression)
+            parser = Parser(tokens)
+            ast_node = parser.parse()
+            return ast_node
+        except Exception as e:
+            logger.debug(f"Failed to parse expression to AST: {expression[:50]}... Error: {e}")
+            return None
+    
+    @staticmethod
+    def _store_ast_nodes(tx, ast_node: Any, expression_id: str, parent_node_id: Optional[str] = None):
+        """Store AST nodes in Neo4j recursively.
+        
+        Args:
+            tx: Neo4j transaction
+            ast_node: Root AST node to store
+            expression_id: Unique identifier for this expression
+            parent_node_id: Optional parent ExpressionNode ID for CHILD relationships
+        """
+        if not AST_AVAILABLE or ast_node is None:
+            return None
+        
+        try:
+            # Serialize AST node to dict
+            ast_dict = ast_node.to_dict()
+            node_type = ast_dict.get("type", "Unknown")
+            
+            # Create value representation for the node
+            if node_type == "Identifier":
+                value = ast_dict.get("name", "")
+            elif node_type == "Literal":
+                value = str(ast_dict.get("value", ""))
+            elif node_type == "BinaryOp":
+                value = ast_dict.get("operator", "")
+            elif node_type == "FunctionCall":
+                value = ast_dict.get("name", "")
+            elif node_type == "PortReference":
+                value = f"{ast_dict.get('transformation', '')}.{ast_dict.get('port', '')}"
+            elif node_type == "VariableReference":
+                value = f"$${ast_dict.get('var_name', '')}"
+            else:
+                value = str(ast_dict)
+            
+            # Create ExpressionNode
+            node_id = f"{expression_id}_{node_type}_{hash(str(ast_dict))}"
+            
+            result = tx.run("""
+                MERGE (e:ExpressionNode {expression_id: $expression_id, node_id: $node_id})
+                SET e.type = $type,
+                    e.value = $value,
+                    e.ast_json = $ast_json
+                RETURN elementId(e) as node_id
+            """, expression_id=expression_id, node_id=node_id, 
+                  type=node_type, value=value[:500],  # Limit value length
+                  ast_json=json.dumps(ast_dict))
+            
+            record = result.single()
+            if not record:
+                return None
+            
+            current_node_id = record["node_id"]
+            
+            # Create CHILD relationship if there's a parent
+            if parent_node_id:
+                tx.run("""
+                    MATCH (parent:ExpressionNode)
+                    WHERE elementId(parent) = $parent_id
+                    MATCH (child:ExpressionNode)
+                    WHERE elementId(child) = $child_id
+                    MERGE (parent)-[:CHILD]->(child)
+                """, parent_id=parent_node_id, child_id=current_node_id)
+            
+            # Recursively store child nodes
+            if node_type == "BinaryOp":
+                # Store left and right children
+                if hasattr(ast_node, 'left') and ast_node.left:
+                    GraphStore._store_ast_nodes(tx, ast_node.left, expression_id, current_node_id)
+                if hasattr(ast_node, 'right') and ast_node.right:
+                    GraphStore._store_ast_nodes(tx, ast_node.right, expression_id, current_node_id)
+            elif node_type == "FunctionCall":
+                # Store function arguments
+                if hasattr(ast_node, 'args') and ast_node.args:
+                    for arg in ast_node.args:
+                        if isinstance(arg, ASTNode):
+                            GraphStore._store_ast_nodes(tx, arg, expression_id, current_node_id)
+            
+            return current_node_id
+            
+        except Exception as e:
+            logger.warning(f"Failed to store AST node: {e}")
+            return None
+    
+    @staticmethod
     def _create_transformation_tx(tx, model: Dict[str, Any]):
         """Transaction function to create transformation in graph."""
         # Try multiple keys to get transformation name
@@ -212,6 +327,7 @@ class GraphStore:
             transformation_props["cyclomatic_complexity"] = complexity_metrics.get("cyclomatic_complexity")
             transformation_props["transformation_count"] = complexity_metrics.get("transformation_count")
             transformation_props["connector_count"] = complexity_metrics.get("connector_count")
+            transformation_props["expr_complexity"] = complexity_metrics.get("expression_complexity", 0)
             transformation_props["lookup_count"] = complexity_metrics.get("lookup_count")
             transformation_props["join_count"] = complexity_metrics.get("join_count")
             transformation_props["aggregation_count"] = complexity_metrics.get("aggregation_count")
@@ -294,6 +410,7 @@ class GraphStore:
                     WITH f
                     MATCH (tgt:Target {name: $parent, transformation: $transformation})
                     MERGE (tgt)-[:HAS_FIELD]->(f)
+                    MERGE (f)-[:WRITES_TO]->(tgt)
                 """, field=field_name, parent=target_name, transformation=transformation_name,
                       data_type=field.get("data_type"), 
                       nullable=field.get("nullable", True))
@@ -410,6 +527,25 @@ class GraphStore:
                 # This enables column-level lineage
                 if port_type in ["OUTPUT", "INPUT/OUTPUT"] and port_expression:
                     logger.debug(f"Creating DERIVED_FROM for port: {port_name}, expression: {port_expression}")
+                    
+                    # Store expression AST in Neo4j
+                    import hashlib
+                    expression_hash = hashlib.md5(port_expression.encode()).hexdigest()[:8]
+                    expression_id = f"{transformation_name}_{trans_name}_{port_name}_{expression_hash}"
+                    ast_node = GraphStore._parse_expression_to_ast(port_expression)
+                    if ast_node:
+                        root_node_id = GraphStore._store_ast_nodes(tx, ast_node, expression_id)
+                        if root_node_id:
+                            # Create HAS_EXPRESSION relationship from Field to ExpressionNode
+                            tx.run("""
+                                MATCH (f:Field {name: $field_name, transformation: $transformation, parent_transformation: $trans_name})
+                                MATCH (e:ExpressionNode {expression_id: $expression_id})
+                                WHERE elementId(e) = $root_node_id
+                                MERGE (f)-[:HAS_EXPRESSION]->(e)
+                            """, field_name=port_name, transformation=transformation_name, 
+                                  trans_name=trans_name, expression_id=expression_id,
+                                  root_node_id=root_node_id)
+                            logger.debug(f"Created AST nodes for expression: {port_name}")
                     
                     # Extract field references from expression
                     # Handle multiple patterns:
@@ -618,8 +754,13 @@ class GraphStore:
             return None
         
         transformation_node = dict(transformation_result["t"])
+        # Try multiple possible property names for transformation_name
+        trans_name = (transformation_node.get("transformation_name") or 
+                     transformation_node.get("name") or 
+                     transformation_name)
+        logger.debug(f"[DEBUG] Graph load - transformation_name param: {transformation_name}, node properties: {list(transformation_node.keys())}, resolved name: {trans_name}")
         model = {
-            "transformation_name": transformation_node.get("transformation_name", transformation_name),
+            "transformation_name": trans_name,
             "source_component_type": transformation_node.get("source_component_type", "mapping"),
             "scd_type": transformation_node.get("scd_type", "NONE"),
             "incremental_keys": transformation_node.get("incremental_keys", []),
@@ -1085,12 +1226,16 @@ class GraphStore:
         """List all transformation names in graph (legacy method name for compatibility).
         
         Returns:
-            List of transformation names
+            List of transformation names (only main mappings, not nested transformations)
         """
         with self.driver.session() as session:
             result = session.run("""
                 MATCH (t:Transformation)
-                WHERE t.source_component_type = 'mapping' OR t.source_component_type IS NULL
+                WHERE (t.source_component_type = 'mapping' 
+                       OR t.source_component_type IS NULL
+                       OR (t.source_component_type = 'session' AND t.name STARTS WITH 'M_'))
+                AND t.transformation IS NULL
+                AND (EXISTS((t)-[:HAS_SOURCE]->()) OR EXISTS((t)-[:HAS_TARGET]->()))
                 RETURN t.name as name
                 ORDER BY t.name
             """)
@@ -1188,12 +1333,30 @@ class GraphStore:
                 
                 # Link task to transformation if transformation name is available
                 transformation_name = task.get("transformation_name") or task.get("mapping_name")
+                
+                # If not in task data, try name pattern matching (S_M_XXX -> M_XXX)
+                if not transformation_name:
+                    if task_name.startswith("S_M_"):
+                        transformation_name = "M_" + task_name[4:]  # S_M_XXX -> M_XXX
+                    elif task_name.startswith("S_"):
+                        transformation_name = "M_" + task_name[2:]  # S_XXX -> M_XXX
+                
                 if transformation_name:
-                    tx.run("""
+                    # Try to match transformation by name (allowing for source_component_type variations)
+                    result = tx.run("""
                         MATCH (t:Task {name: $task})
-                        MATCH (trans:Transformation {name: $transformation})
-                        MERGE (t)-[:EXECUTES]->(trans)
+                        MATCH (trans:Transformation)
+                        WHERE (trans.name = $transformation OR trans.transformation_name = $transformation)
+                        AND (trans.source_component_type = 'mapping' 
+                             OR trans.source_component_type IS NULL
+                             OR (trans.source_component_type = 'session' AND trans.name STARTS WITH 'M_'))
+                        MERGE (t)-[r:EXECUTES]->(trans)
+                        RETURN r, trans.name as transformation_name
                     """, task=task_name, transformation=transformation_name)
+                    
+                    record = result.single()
+                    if not record:
+                        logger.debug(f"Could not create EXECUTES relationship: Task {task_name} -> Transformation {transformation_name} (transformation not found in graph)")
             
             elif task_type == "Worklet" or "Worklet" in task_type:
                 # Create SubPipeline node and link to pipeline
@@ -1443,10 +1606,15 @@ class GraphStore:
         # Link to transformation if available
         if transformation_name:
             # Try matching by transformation_name property
+            # Filter to only match main mappings (not nested transformations)
             result = tx.run("""
                 MATCH (t:Task {name: $task})
                 MATCH (trans:Transformation)
-                WHERE trans.name = $transformation OR trans.transformation_name = $transformation
+                WHERE (trans.name = $transformation OR trans.transformation_name = $transformation)
+                AND (trans.source_component_type = 'mapping' 
+                     OR trans.source_component_type IS NULL
+                     OR (trans.source_component_type = 'session' AND trans.name STARTS WITH 'M_'))
+                AND trans.transformation IS NULL
                 MERGE (t)-[r:EXECUTES]->(trans)
                 RETURN r, trans.name as transformation_name
             """, task=task_name, transformation=transformation_name)
@@ -1454,16 +1622,31 @@ class GraphStore:
             # Log if relationship was created
             record = result.single()
             if record:
-                logger.debug(f"Created EXECUTES relationship: {task_name} -> {record['transformation_name']}")
+                logger.info(f"Created EXECUTES relationship: {task_name} -> {record['transformation_name']}")
             else:
-                logger.warning(f"Could not create EXECUTES relationship: Task {task_name} -> Transformation {transformation_name} (transformation not found in graph)")
+                # Check if transformation exists at all
+                check_result = tx.run("""
+                    MATCH (trans:Transformation)
+                    WHERE trans.name = $transformation OR trans.transformation_name = $transformation
+                    RETURN trans.name as name, trans.source_component_type as source_type, trans.transformation_name as transformation_name
+                    LIMIT 5
+                """, transformation=transformation_name)
+                matching_transforms = list(check_result)
+                if matching_transforms:
+                    logger.warning(f"Could not create EXECUTES relationship: Task {task_name} -> Transformation {transformation_name}")
+                    logger.warning(f"  Found {len(matching_transforms)} matching transformation(s) but they don't match the filter criteria:")
+                    for mt in matching_transforms:
+                        logger.warning(f"    - {mt['name']}: source_type={mt['source_type']}, transformation_name={mt['transformation_name']}")
+                else:
+                    logger.warning(f"Could not create EXECUTES relationship: Task {task_name} -> Transformation {transformation_name} (transformation not found in graph)")
     
-    def save_sub_pipeline(self, sub_pipeline_data: Dict[str, Any], pipeline_name: Optional[str] = None) -> str:
+    def save_sub_pipeline(self, sub_pipeline_data: Dict[str, Any], pipeline_name: Optional[str] = None, parsed_dir: Optional[str] = None) -> str:
         """Save sub pipeline (worklet) to Neo4j.
         
         Args:
             sub_pipeline_data: Sub pipeline data dictionary with name, tasks
             pipeline_name: Optional pipeline name to link sub pipeline to
+            parsed_dir: Optional parsed directory path for extracting mapping names from session files
             
         Returns:
             Sub pipeline name
@@ -1472,13 +1655,13 @@ class GraphStore:
         logger.info(f"Saving sub pipeline to graph: {sub_pipeline_name}")
         
         with self.driver.session() as session:
-            session.execute_write(self._create_sub_pipeline_tx, sub_pipeline_data, pipeline_name)
+            session.execute_write(self._create_sub_pipeline_tx, sub_pipeline_data, pipeline_name, parsed_dir)
         
         logger.info(f"Successfully saved sub pipeline to graph: {sub_pipeline_name}")
         return sub_pipeline_name
     
     @staticmethod
-    def _create_sub_pipeline_tx(tx, sub_pipeline_data: Dict[str, Any], pipeline_name: Optional[str] = None):
+    def _create_sub_pipeline_tx(tx, sub_pipeline_data: Dict[str, Any], pipeline_name: Optional[str] = None, parsed_dir: Optional[str] = None):
         """Transaction function to create sub pipeline in graph."""
         sub_pipeline_name = sub_pipeline_data.get("name", "unknown")
         source_component_type = sub_pipeline_data.get("source_component_type", "worklet")
@@ -1510,22 +1693,82 @@ class GraphStore:
             task_type = task.get("type", "")
             
             if task_type == "Session" or "Session" in task_type:
+                # Create Task node with properties
+                task_props = {
+                    "name": task_name,
+                    "source_component_type": "session",
+                    "type": task_type
+                }
+                tx.run("""
+                    MERGE (t:Task {name: $name})
+                    SET t += $props
+                """, name=task_name, props=task_props)
+                
                 # Link sub pipeline to task
                 tx.run("""
                     MATCH (sp:SubPipeline {name: $sub_pipeline})
-                    MERGE (t:Task {name: $task})
-                    SET t.type = $type, t.source_component_type = 'session'
+                    MATCH (t:Task {name: $task})
                     MERGE (sp)-[:CONTAINS]->(t)
-                """, sub_pipeline=sub_pipeline_name, task=task_name, type=task_type)
+                """, sub_pipeline=sub_pipeline_name, task=task_name)
+                
+                # Extract transformation name from multiple sources
+                transformation_name = task.get("transformation_name") or task.get("mapping_name")
+                
+                # If not in task data, try to load from session file
+                if not transformation_name and parsed_dir:
+                    import os
+                    import json
+                    session_file = os.path.join(parsed_dir, f"{task_name}_session.json")
+                    if os.path.exists(session_file):
+                        try:
+                            with open(session_file, 'r') as f:
+                                session_data = json.load(f)
+                                transformation_name = (session_data.get("mapping") or 
+                                                     session_data.get("mapping_name") or
+                                                     session_data.get("transformation_name"))
+                                # Check config
+                                if not transformation_name and session_data.get("config"):
+                                    transformation_name = session_data["config"].get("Mapping Name")
+                                # Check task_runtime_config
+                                if not transformation_name and session_data.get("task_runtime_config"):
+                                    other_attrs = session_data["task_runtime_config"].get("other_attributes", {})
+                                    transformation_name = other_attrs.get("Mapping Name")
+                        except Exception as e:
+                            # Can't use logger in static method, but we can continue
+                            pass
+                
+                # If still not found, try task attributes
+                if not transformation_name:
+                    task_attrs = task.get("attributes", {})
+                    transformation_name = task_attrs.get("Mapping Name")
+                
+                # If still not found, try name pattern matching
+                if not transformation_name:
+                    if task_name.startswith("S_M_"):
+                        transformation_name = "M_" + task_name[4:]  # S_M_XXX -> M_XXX
+                    elif task_name.startswith("S_"):
+                        transformation_name = "M_" + task_name[2:]  # S_XXX -> M_XXX
                 
                 # Link task to transformation if available
-                transformation_name = task.get("transformation_name") or task.get("mapping_name")
                 if transformation_name:
-                    tx.run("""
+                    # Filter to only match main mappings (not nested transformations)
+                    result = tx.run("""
                         MATCH (t:Task {name: $task})
-                        MATCH (trans:Transformation {name: $transformation})
-                        MERGE (t)-[:EXECUTES]->(trans)
+                        MATCH (trans:Transformation)
+                        WHERE (trans.name = $transformation OR trans.transformation_name = $transformation)
+                        AND (trans.source_component_type = 'mapping' 
+                             OR trans.source_component_type IS NULL
+                             OR (trans.source_component_type = 'session' AND trans.name STARTS WITH 'M_'))
+                        AND trans.transformation IS NULL
+                        MERGE (t)-[r:EXECUTES]->(trans)
+                        RETURN r, trans.name as transformation_name
                     """, task=task_name, transformation=transformation_name)
+                    
+                    record = result.single()
+                    if record:
+                        logger.info(f"Created EXECUTES relationship in worklet: {task_name} -> {record['transformation_name']}")
+                    else:
+                        logger.warning(f"Could not create EXECUTES relationship for worklet task {task_name} -> Transformation {transformation_name}")
     
     def save_file_metadata(self, component_type: str, component_name: str, 
                           file_path: str, filename: str, file_size: int = None,
@@ -1728,9 +1971,11 @@ class GraphStore:
             MERGE (c:GeneratedCode {file_path: $file_path})
             SET c += $props
             WITH c
-            // Match transformation by name, allowing source_component_type to be 'mapping' or NULL
+            // Match transformation by name, allowing source_component_type to be 'mapping', NULL, or 'session' (for mappings)
             MATCH (t:Transformation {name: $mapping_name})
-            WHERE t.source_component_type = 'mapping' OR t.source_component_type IS NULL
+            WHERE t.source_component_type = 'mapping' 
+               OR t.source_component_type IS NULL
+               OR (t.source_component_type = 'session' AND t.name STARTS WITH 'M_')
             MERGE (t)-[r:HAS_CODE]->(c)
             RETURN t.name as transformation_name, r
         """, file_path=file_path, mapping_name=mapping_name, props=code_props)
